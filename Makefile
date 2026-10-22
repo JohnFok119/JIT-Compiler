@@ -50,9 +50,19 @@ $(FUZZ_BIN): tests/fuzz/optfuzz.c tests/fuzz/gen.c tests/fuzz/gen.h $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	@$(CC) $(CFLAGS) tests/fuzz/optfuzz.c tests/fuzz/gen.c $(LIB_OBJS) -o $@ $(LDLIBS)
 
-check: all test-bin $(FUZZ_BIN)
+X86FUZZ_BIN := $(BUILD)/tests/x86fuzz
+
+$(X86FUZZ_BIN): tests/fuzz/x86fuzz.c tests/fuzz/gen.c tests/fuzz/gen.h $(LIB_OBJS)
+	@echo "[CC]" tests/fuzz/x86fuzz.c
+	@mkdir -p $(dir $@)
+	@$(CC) $(CFLAGS) tests/fuzz/x86fuzz.c tests/fuzz/gen.c $(LIB_OBJS) -o $@ $(LDLIBS)
+
+# test_encode writes build/enc.bin + build/enc.lst for check-encoding.sh
+check: all test-bin $(FUZZ_BIN) $(X86FUZZ_BIN)
 	@set -e; for t in $(TEST_BINS); do $$t; done
+	@bash tests/check-encoding.sh
 	@$(FUZZ_BIN)
+	@$(X86FUZZ_BIN)
 	@tests/run-golden.sh
 
 .PHONY: all clean test-bin check

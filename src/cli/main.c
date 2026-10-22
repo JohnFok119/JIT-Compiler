@@ -16,8 +16,8 @@ static int
 usage(void)
 {
 	fprintf(stderr,
-		"usage: jit [--legacy] [--emit tokens|ast|ir] "
-		"[--backend interp|gcc] '<expr>' [name=value ...]\n");
+		"usage: jit [--legacy] [--emit tokens|ast|ir|asm|hex] "
+		"[--backend interp|x86|gcc] '<expr>' [name=value ...]\n");
 	return 2;
 }
 
@@ -87,7 +87,9 @@ static int
 run(int argc, char *argv[], jit_expr **pe)
 {
 	const char *emit = NULL, *src;
-	int legacy = 0, backend = -1, opt = 2, i = 1, j, k;
+	int legacy = 0, backend = -1, opt = 2, i = 1, j, k, code_emit;
+	double result;
+	jit_fn *fn;
 	double vals[JIT_MAX_VARS] = { 0 };
 	int have[JIT_MAX_VARS] = { 0 };
 	struct jit_error err;
@@ -110,7 +112,9 @@ run(int argc, char *argv[], jit_expr **pe)
 			if (i + 1 >= argc ||
 			    (strcmp(argv[i + 1], "tokens") &&
 			     strcmp(argv[i + 1], "ast") &&
-			     strcmp(argv[i + 1], "ir"))) {
+			     strcmp(argv[i + 1], "ir") &&
+			     strcmp(argv[i + 1], "asm") &&
+			     strcmp(argv[i + 1], "hex"))) {
 				return usage();
 			}
 			emit = argv[i + 1];
@@ -191,7 +195,9 @@ run(int argc, char *argv[], jit_expr **pe)
 	if (legacy) {
 		opt = 0;        /* legacy is never optimized */
 	}
-	if (emit) {
+	/* asm / hex dump the compiled code, so they go through jit_compile */
+	code_emit = emit && (!strcmp(emit, "asm") || !strcmp(emit, "hex"));
+	if (emit && !code_emit) {
 		jit_dump(e, emit, stdout);
 		if (opt && !strcmp(emit, "ir")) {
 			if (jit_optimize(e, opt)) {
@@ -204,7 +210,7 @@ run(int argc, char *argv[], jit_expr **pe)
 		return 0;
 	}
 
-	for (k = 0; k < jit_nvars(e); ++k) {
+	for (k = 0; k < jit_nvars(e) && !code_emit; ++k) {
 		if (!have[k]) {
 			fprintf(stderr, "error: no value for variable '%s'\n",
 				jit_var_name(e, k));
@@ -218,27 +224,38 @@ run(int argc, char *argv[], jit_expr **pe)
 	}
 
 	if (0 > backend) {
-		backend = legacy ? JIT_GCC : JIT_INTERP;
+		backend = legacy ? JIT_GCC : JIT_X86;
 	}
 	if (legacy && (JIT_X86 == backend || JIT_WASM == backend)) {
 		fprintf(stderr,
 			"error: legacy mode needs --backend gcc or interp\n");
 		return 1;
 	}
-	if (JIT_INTERP != backend && !(legacy && JIT_GCC == backend)) {
-		fprintf(stderr, "error: %s backend arrives in a later version\n",
-			JIT_GCC == backend ? "gcc" :
-			JIT_X86 == backend ? "x86" : "wasm");
-		return 1;
-	}
-	if (JIT_GCC == backend) {
+	if (legacy && JIT_GCC == backend && !code_emit) {
 		return run_legacy_gcc(e);
 	}
+	if (!(fn = jit_compile(e, (enum jit_backend)backend, &err))) {
+		fprintf(stderr, "error: %s\n", err.msg);
+		return 1;
+	}
+	if (code_emit) {
+		int bad = jit_fn_dump(fn, emit, stdout);
+
+		jit_fn_free(fn);
+		if (bad) {
+			fprintf(stderr, "error: --emit %s needs --backend x86\n",
+				emit);
+			return 1;
+		}
+		return 0;
+	}
+	result = jit_call(fn, vals);
+	jit_fn_free(fn);
 	if (legacy) {
-		printf("%f\n", jit_interp(e, vals));
+		printf("%f\n", result);
 	}
 	else {
-		ir_fmt_double(buf, sizeof (buf), jit_interp(e, vals));
+		ir_fmt_double(buf, sizeof (buf), result);
 		printf("%s\n", buf);
 	}
 	return 0;

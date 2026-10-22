@@ -27,4 +27,15 @@ int         jit_optimize(jit_expr *, int level);
 /* stage: "tokens" | "ast" | "ir"; 0 ok, -1 unknown stage */
 int         jit_dump(const jit_expr *, const char *stage, FILE *out);
 
+/* Compiled functions. jit_compile takes a snapshot: the jit_fn stays valid
+ * after jit_free(expr). */
+typedef struct jit_fn jit_fn;
+typedef double (*jit_native)(const double *vars);
+jit_fn   *jit_compile(const jit_expr *, enum jit_backend, struct jit_error *err); /* NULL on error, err->pos = -1 */
+double    jit_call(const jit_fn *, const double *vars);
+jit_native jit_entry(const jit_fn *);          /* raw pointer for tight loops (benchmarks); NULL for JIT_INTERP */
+void      jit_fn_free(jit_fn *);
+int       jit_fn_dump(const jit_fn *, const char *stage, FILE *out);   /* "asm" | "hex" (x86) | "c" (gcc); 0 ok, -1 unknown stage */
+size_t    jit_fn_code_size(const jit_fn *);    /* bytes mapped (code + constant pool); 0 for JIT_INTERP */
+
 #endif /* JIT_H */

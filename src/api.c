@@ -3,7 +3,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include "api.h"
+#include "backend/x86_64/emit.h"
 #include "front/parser.h"
+
+struct jit_fn {
+	enum jit_backend backend;
+	struct ir ir;             /* JIT_INTERP: snapshot of the nodes */
+	struct x86_code x86;      /* JIT_X86 */
+};
 
 static jit_expr *
 oom(jit_expr *e, struct jit_error *err)
@@ -97,4 +104,101 @@ jit_dump(const jit_expr *e, const char *stage, FILE *out)
 		return -1;
 	}
 	return 0;
+}
+
+static jit_fn *
+compile_error(jit_fn *fn, struct jit_error *err, const char *msg)
+{
+	jit_fn_free(fn);
+	err->pos = -1;
+	snprintf(err->msg, sizeof (err->msg), "%s", msg);
+	return NULL;
+}
+
+jit_fn *
+jit_compile(const jit_expr *e, enum jit_backend backend, struct jit_error *err)
+{
+	jit_fn *fn;
+
+	if (JIT_GCC == backend || JIT_WASM == backend) {
+		return compile_error(NULL, err, JIT_GCC == backend
+				     ? "gcc backend arrives in a later version"
+				     : "wasm backend arrives in a later version");
+	}
+	if (JIT_INTERP != backend && JIT_X86 != backend) {
+		return compile_error(NULL, err, "unknown backend");
+	}
+	if (!(fn = calloc(1, sizeof (*fn)))) {
+		return compile_error(NULL, err, "out of memory");
+	}
+	fn->backend = backend;
+	ir_init(&fn->ir);
+	if (JIT_X86 == backend) {
+		if (x86_compile(&e->ir, &fn->x86, err)) {
+			jit_fn_free(fn);
+			return NULL;
+		}
+		return fn;
+	}
+	/* JIT_INTERP: copy the nodes the interpreter reads */
+	fn->ir.count = fn->ir.cap = e->ir.count;
+	fn->ir.root = e->ir.root;
+	fn->ir.nvars = e->ir.nvars;
+	fn->ir.legacy = e->ir.legacy;
+	memcpy(fn->ir.vars, e->ir.vars, sizeof (fn->ir.vars));
+	if (e->ir.count &&
+	    !(fn->ir.nodes = malloc((size_t)e->ir.count * sizeof (*fn->ir.nodes)))) {
+		return compile_error(fn, err, "out of memory");
+	}
+	if (e->ir.count) {
+		memcpy(fn->ir.nodes, e->ir.nodes,
+		       (size_t)e->ir.count * sizeof (*fn->ir.nodes));
+	}
+	return fn;
+}
+
+jit_native
+jit_entry(const jit_fn *fn)
+{
+	jit_native f = NULL;
+
+	if (JIT_X86 == fn->backend) {
+		/* object pointer -> function pointer without a pedantic cast */
+		memcpy(&f, &fn->x86.mem, sizeof (f));
+	}
+	return f;
+}
+
+double
+jit_call(const jit_fn *fn, const double *vars)
+{
+	if (JIT_X86 == fn->backend) {
+		return jit_entry(fn)(vars);
+	}
+	return ir_interp(&fn->ir, vars);
+}
+
+void
+jit_fn_free(jit_fn *fn)
+{
+	if (fn) {
+		ir_free(&fn->ir);
+		x86_code_free(&fn->x86);
+		free(fn);
+	}
+}
+
+int
+jit_fn_dump(const jit_fn *fn, const char *stage, FILE *out)
+{
+	if (JIT_X86 == fn->backend) {
+		return x86_dump(&fn->x86, stage, out);
+	}
+	return -1;
+}
+
+size_t
+jit_fn_code_size(const jit_fn *fn)
+{
+	return JIT_X86 == fn->backend ? fn->x86.size : 0;
 }
