@@ -32,4 +32,19 @@ clean:
 
 -include $(OBJS:.o=.d)
 
-.PHONY: all clean
+TEST_SRCS := $(wildcard tests/unit/*.c)
+TEST_BINS := $(TEST_SRCS:tests/unit/%.c=$(BUILD)/tests/%)
+LIB_OBJS  := $(filter-out $(BUILD)/src/main.o,$(OBJS))
+
+test-bin: $(TEST_BINS)
+
+$(BUILD)/tests/%: tests/unit/%.c tests/check.h $(LIB_OBJS)
+	@echo "[CC]" $<
+	@mkdir -p $(dir $@)
+	@$(CC) $(CFLAGS) $< $(LIB_OBJS) -o $@ $(LDLIBS)
+
+check: all test-bin
+	@set -e; for t in $(TEST_BINS); do $$t; done
+	@tests/run-golden.sh
+
+.PHONY: all clean test-bin check
