@@ -75,3 +75,8 @@ check: all test-bin $(FUZZ_BIN) $(X86FUZZ_BIN) $(DIFFFUZZ_BIN)
 	@tests/run-golden.sh
 
 .PHONY: all clean test-bin check
+
+bench: all
+	@bash bench/run.sh
+
+.PHONY: bench

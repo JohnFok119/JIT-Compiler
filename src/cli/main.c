@@ -8,10 +8,11 @@
 #include <unistd.h>
 #include "jit.h"
 #include "ir/ir.h"
+#include "cli/bench.h"
 
 #define USAGE \
 	"usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|infix|asm|hex|c] " \
-	"[--diff VAR] [--backend interp|x86|gcc] [--help] [--version] " \
+	"[--diff VAR] [--backend interp|x86|gcc] [--bench [N]] [--help] [--version] " \
 	"'<expr>' [name=value ...]"
 
 #define MAX_LINE 4096
@@ -22,6 +23,7 @@ struct opts {
 	int backend;            /* enum jit_backend, or -1 = default */
 	int opt;                /* 0 or 2 */
 	const char *diff;       /* NULL, or the variable to differentiate by */
+	long bench;             /* 0, or the evaluations per run for --bench */
 };
 
 static int use_color;       /* red "error:" and dim caret, only on a TTY */
@@ -53,6 +55,9 @@ help(void)
 	       "      jit --diff x 'x^3 + sin(x)*x'\n"
 	       "      jit --diff x 'sigmoid(3*x)' x=0.2\n"
 	       "      jit --backend gcc --emit c 'sigmoid(x) * 2'\n"
+	       "  --bench [N]                time compile + N evaluations (default 1000000) on every\n"
+	       "                             backend: interp, x86 -O0, x86 -O2, gcc\n"
+	       "      jit --bench 100000 'sin(x) * 2'\n"
 	       "  --legacy                   the original assignment: sigmoid of the result, x/0 = 0\n"
 	       "      jit --legacy '10 / 4'\n"
 	       "  --help                     show this text\n"
@@ -367,7 +372,7 @@ repl(struct opts o)
 int
 main(int argc, char *argv[])
 {
-	struct opts o = { NULL, 0, -1, 2, NULL };
+	struct opts o = { NULL, 0, -1, 2, NULL, 0 };
 	const char *src, **bind;
 	int i = 1, j;
 
@@ -405,6 +410,19 @@ main(int argc, char *argv[])
 			}
 			o.emit = argv[i + 1];
 			i += 2;
+		}
+		else if (!strcmp(a, "--bench")) {
+			o.bench = 1000000;
+			++i;
+			if (i + 1 < argc && isdigit((unsigned char)argv[i][0])) {
+				char *end;
+
+				o.bench = strtol(argv[i], &end, 10);
+				if (*end || o.bench < 1) {
+					return usage();
+				}
+				++i;
+			}
 		}
 		else if (!strcmp(a, "--diff")) {
 			if (i + 1 >= argc || !argv[i + 1][0]) {
@@ -445,6 +463,12 @@ main(int argc, char *argv[])
 		return isatty(0) ? repl(o) : usage();
 	}
 	src = argv[i++];
+	if (o.bench) {
+		if (i < argc || o.legacy || o.diff || o.emit) {
+			return usage();
+		}
+		return bench_run(src, o.bench);
+	}
 	for (j = i; j < argc; ++j) {
 		const char *eq = strchr(argv[j], '=');
 		if (!eq || eq == argv[j]) {
