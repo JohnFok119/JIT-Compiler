@@ -1,0 +1,3 @@
+--emit
+ir
+x*3 + sin(x)

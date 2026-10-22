@@ -1,0 +1,1 @@
+usage: jit [--legacy] [--emit tokens|ast|ir] [--backend interp|gcc] '<expr>' [name=value ...]

@@ -1,0 +1,3 @@
+--emit
+ir
+max(y - x, y / 2)

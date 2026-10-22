@@ -8,7 +8,7 @@
 #
 
 CC     = gcc
-CFLAGS = -std=c11 -pedantic -Wall -Wextra -Werror -O2 -D_GNU_SOURCE -MMD -MP -Isrc
+CFLAGS = -std=c11 -pedantic -Wall -Wextra -Werror -O2 -ffp-contract=off -D_GNU_SOURCE -MMD -MP -Isrc -Iinclude
 LDLIBS = -lm -ldl
 BUILD  = build
 BIN    = $(BUILD)/jit
@@ -34,7 +34,7 @@ clean:
 
 TEST_SRCS := $(wildcard tests/unit/*.c)
 TEST_BINS := $(TEST_SRCS:tests/unit/%.c=$(BUILD)/tests/%)
-LIB_OBJS  := $(filter-out $(BUILD)/src/main.o,$(OBJS))
+LIB_OBJS  := $(filter-out $(BUILD)/src/cli/main.o,$(OBJS))
 
 test-bin: $(TEST_BINS)
 

@@ -1,0 +1,4 @@
+--emit
+ir
+sin(x)*sin(x) + 3
+x=1

@@ -1,0 +1,6 @@
+(add
+  (mul
+    (var x)
+    (num 3))
+  (call sin
+    (var x)))

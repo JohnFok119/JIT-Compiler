@@ -1,0 +1,3 @@
+--emit
+tokens
+1.5e3 + sin(x)^2

@@ -1,0 +1,3 @@
+error: 'pi' is a constant
+  pi(2)
+  ^
