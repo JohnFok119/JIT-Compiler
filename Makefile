@@ -43,8 +43,16 @@ $(BUILD)/tests/%: tests/unit/%.c tests/check.h $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	@$(CC) $(CFLAGS) $< $(LIB_OBJS) -o $@ $(LDLIBS)
 
-check: all test-bin
+FUZZ_BIN := $(BUILD)/tests/optfuzz
+
+$(FUZZ_BIN): tests/fuzz/optfuzz.c tests/fuzz/gen.c tests/fuzz/gen.h $(LIB_OBJS)
+	@echo "[CC]" tests/fuzz/optfuzz.c
+	@mkdir -p $(dir $@)
+	@$(CC) $(CFLAGS) tests/fuzz/optfuzz.c tests/fuzz/gen.c $(LIB_OBJS) -o $@ $(LDLIBS)
+
+check: all test-bin $(FUZZ_BIN)
 	@set -e; for t in $(TEST_BINS); do $$t; done
+	@$(FUZZ_BIN)
 	@tests/run-golden.sh
 
 .PHONY: all clean test-bin check

@@ -1,3 +1,4 @@
+-O0
 --emit
 ir
 max(y - x, y / 2)

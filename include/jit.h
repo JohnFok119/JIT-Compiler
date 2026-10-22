@@ -22,6 +22,8 @@ void        jit_free(jit_expr *);
 int         jit_nvars(const jit_expr *);
 const char *jit_var_name(const jit_expr *, int i);
 double      jit_interp(const jit_expr *, const double *vars);
+/* level 0: nothing; 2: all optimizer passes (no-op on legacy expressions). 0 ok, -1 bad level or out of memory (expression unchanged). */
+int         jit_optimize(jit_expr *, int level);
 /* stage: "tokens" | "ast" | "ir"; 0 ok, -1 unknown stage */
 int         jit_dump(const jit_expr *, const char *stage, FILE *out);
 

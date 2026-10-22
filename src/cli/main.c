@@ -87,7 +87,7 @@ static int
 run(int argc, char *argv[], jit_expr **pe)
 {
 	const char *emit = NULL, *src;
-	int legacy = 0, backend = -1, i = 1, j, k;
+	int legacy = 0, backend = -1, opt = 2, i = 1, j, k;
 	double vals[JIT_MAX_VARS] = { 0 };
 	int have[JIT_MAX_VARS] = { 0 };
 	struct jit_error err;
@@ -100,6 +100,10 @@ run(int argc, char *argv[], jit_expr **pe)
 
 		if (!strcmp(a, "--legacy")) {
 			legacy = 1;
+			++i;
+		}
+		else if (!strcmp(a, "-O0") || !strcmp(a, "-O2")) {
+			opt = 'O' == a[1] && '0' == a[2] ? 0 : 2;
 			++i;
 		}
 		else if (!strcmp(a, "--emit")) {
@@ -184,8 +188,19 @@ run(int argc, char *argv[], jit_expr **pe)
 		have[k] = 1;
 	}
 
+	if (legacy) {
+		opt = 0;        /* legacy is never optimized */
+	}
 	if (emit) {
 		jit_dump(e, emit, stdout);
+		if (opt && !strcmp(emit, "ir")) {
+			if (jit_optimize(e, opt)) {
+				fprintf(stderr, "error: out of memory\n");
+				return 1;
+			}
+			printf("; after -O%d\n", opt);
+			jit_dump(e, emit, stdout);
+		}
 		return 0;
 	}
 
@@ -195,6 +210,11 @@ run(int argc, char *argv[], jit_expr **pe)
 				jit_var_name(e, k));
 			return 1;
 		}
+	}
+
+	if (opt && jit_optimize(e, opt)) {
+		fprintf(stderr, "error: out of memory\n");
+		return 1;
 	}
 
 	if (0 > backend) {

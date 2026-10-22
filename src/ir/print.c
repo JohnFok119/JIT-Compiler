@@ -13,14 +13,18 @@ ir_fmt_double(char *buf, size_t len, double v)
 		snprintf(buf, len, "nan");
 		return;
 	}
-	for (prec = 15; prec <= 17; ++prec) {
+	for (prec = 1; prec <= 17; ++prec) {
 		double back;
 
 		snprintf(buf, len, "%.*g", prec, v);
 		back = strtod(buf, NULL);
 		if (!memcmp(&back, &v, sizeof (v))) {
-			return;
+			break;
 		}
+	}
+	/* normal numbers keep the plain notation of %.15g (100, not 1e+02) */
+	if (prec < 15 && FP_NORMAL == fpclassify(v)) {
+		snprintf(buf, len, "%.15g", v);
 	}
 }
 

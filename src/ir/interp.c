@@ -5,16 +5,12 @@
 #include "ir/ir.h"
 #include "runtime/rt.h"
 
-static double
-eval(const struct ir *ir, const struct ir_node *n, const double *v,
-     const double *vars)
+double
+ir_apply(int legacy, enum ir_op op, double a, double b)
 {
-	double a = 0 <= n->a && IR_VAR != n->op ? v[n->a] : 0.0;
-	double b = 0 <= n->b ? v[n->b] : 0.0;
-
-	switch (n->op) {
-	case IR_CONST:   return n->imm;
-	case IR_VAR:     return vars[n->a];
+	switch (op) {
+	case IR_CONST:
+	case IR_VAR:     return NAN;
 	case IR_NEG:     return -a;
 	case IR_ABS:     return fabs(a);
 	case IR_SQRT:    return sqrt(a);
@@ -30,7 +26,7 @@ eval(const struct ir *ir, const struct ir_node *n, const double *v,
 	case IR_SUB:     return a - b;
 	case IR_MUL:     return a * b;
 	case IR_DIV:
-		if (ir->legacy) {
+		if (legacy) {
 			return b ? (a / b) : 0.0;
 		}
 		return a / b;
@@ -40,6 +36,22 @@ eval(const struct ir *ir, const struct ir_node *n, const double *v,
 	case IR_STEP:    return (a > 0.0) ? 1.0 : 0.0;
 	}
 	return NAN;
+}
+
+static double
+eval(const struct ir *ir, const struct ir_node *n, const double *v,
+     const double *vars)
+{
+	double a = 0 <= n->a && IR_VAR != n->op ? v[n->a] : 0.0;
+	double b = 0 <= n->b ? v[n->b] : 0.0;
+
+	if (IR_CONST == n->op) {
+		return n->imm;
+	}
+	if (IR_VAR == n->op) {
+		return vars[n->a];
+	}
+	return ir_apply(ir->legacy, n->op, a, b);
 }
 
 double

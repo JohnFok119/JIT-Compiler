@@ -47,6 +47,9 @@ const char *ir_op_name(enum ir_op);
 struct ast;
 int ir_lower(struct ir *, const struct ast *);
 
+/* The operation itself on operand values (the interpreter definition; not for IR_CONST / IR_VAR). */
+double ir_apply(int legacy, enum ir_op, double a, double b);
+
 /* Value of node ir->root given the variable values (honours ir->legacy). */
 double ir_interp(const struct ir *, const double *vars);
 

@@ -1,3 +1,4 @@
+-O0
 --emit
 ir
 x*3 + sin(x)

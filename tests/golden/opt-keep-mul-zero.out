@@ -1,0 +1,13 @@
+%0 = var x
+%1 = const 0
+%2 = mul %0, %1
+%3 = div %0, %1
+%4 = add %2, %3
+ret %4
+; after -O2
+%0 = var x
+%1 = const 0
+%2 = mul %0, %1
+%3 = div %0, %1
+%4 = add %2, %3
+ret %4
