@@ -138,14 +138,29 @@ test_strength(void)
 {
 	rule("x*2", "%0 = var x\n%1 = add %0, %0\nret %1\n");
 	rule("2*x", "%0 = var x\n%1 = add %0, %0\nret %1\n");
-	rule("pow(x, 2)", "%0 = var x\n%1 = mul %0, %0\nret %1\n");
-	rule("x^2", "%0 = var x\n%1 = mul %0, %0\nret %1\n");
 	rule("pow(x, 1)", X1);
 	rule("x/4", "%0 = var x\n%1 = const 0.25\n%2 = mul %0, %1\nret %2\n");
 	rule("x/(-0.5)", "%0 = var x\n%1 = const -2\n%2 = mul %0, %1\nret %2\n");
 	/* x/0.5 -> x*2 -> x+x across rounds */
 	rule("x/0.5", "%0 = var x\n%1 = add %0, %0\nret %1\n");
 	rule("x/2", "%0 = var x\n%1 = const 0.5\n%2 = mul %0, %1\nret %2\n");
+}
+
+/* Regression: glibc 2.31 pow(z, 2) != z * z at this z; -O2 must keep pow. */
+static void
+test_pow_two_regression(void)
+{
+	struct jit_error err;
+	jit_expr *a = jit_parse("pow(z, 2)", 0, &err);
+	jit_expr *b = jit_parse("pow(z, 2)", 0, &err);
+	double v[JIT_MAX_VARS] = { 1.0175903746940147 };
+
+	CHECK(a && b && 0 == jit_optimize(b, 2));
+	if (a && b) {
+		CHECK_EQ_DBL_BITS(jit_interp(a, v), jit_interp(b, v));
+	}
+	jit_free(a);
+	jit_free(b);
 }
 
 static void
@@ -157,6 +172,8 @@ test_must_not_fire(void)
 	no_change("0 + x");
 	no_change("x * 0");        /* inf*0 = nan, -1*0 = -0 */
 	no_change("0 * x");
+	no_change("pow(x, 2)");    /* glibc pow(z, 2) is not always z * z */
+	no_change("x^2");
 	no_change("pow(x, 3)");    /* repeated multiplication is not bit-identical */
 	no_change("x^3");
 	no_change("x / 3");        /* not a power of two */
@@ -241,6 +258,7 @@ main(void)
 	test_identities();
 	test_strength();
 	test_must_not_fire();
+	test_pow_two_regression();
 	test_dce_and_cse();
 	test_levels();
 	test_formatter();
