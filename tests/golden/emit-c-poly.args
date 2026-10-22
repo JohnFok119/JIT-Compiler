@@ -1,0 +1,5 @@
+--backend
+gcc
+--emit
+c
+x*x*x-2*x+1.5

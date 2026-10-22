@@ -1,0 +1,21 @@
+usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|asm|hex|c] [--backend interp|x86|gcc] [--help] [--version] '<expr>' [name=value ...]
+
+With no expression on a terminal, jit starts an interactive prompt.
+
+options (one example each):
+  --backend interp|x86|gcc   how the expression runs (default x86; gcc with --legacy)
+      jit --backend gcc 'sin(x) * 2' x=0.5
+  -O0 | -O2                  optimizer level (default -O2)
+      jit -O0 '2 * 3 + x' x=1
+  --emit STAGE               print a stage instead of running; STAGE is
+                             tokens, ast, ir, asm, hex (x86 backend) or c (gcc backend)
+      jit --emit ir 'x * 1 + 0'
+      jit --backend gcc --emit c 'sigmoid(x) * 2'
+  --legacy                   the original assignment: sigmoid of the result, x/0 = 0
+      jit --legacy '10 / 4'
+  --help                     show this text
+      jit --help
+  --version                  show the version
+      jit --version
+
+prompt commands: :q quits, :emit STAGE turns a stage dump on or off

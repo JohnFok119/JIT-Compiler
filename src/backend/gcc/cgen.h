@@ -15,4 +15,12 @@
  */
 int cgen_legacy(const struct ir *, FILE *out);
 
+/*
+ * Writes `double evaluate(const double *v)` for a normal-mode IR: constants
+ * as %a hex floats (non-finite ones as (1.0/0.0), (-1.0/0.0), (0.0/0.0)),
+ * libm calls through <math.h>, sigmoid through the host pointer trick.
+ * Returns 0, or -1 for an invalid IR.
+ */
+int cgen_normal(const struct ir *, FILE *out);
+
 #endif /* JIT_BACKEND_GCC_CGEN_H */

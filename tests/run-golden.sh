@@ -12,7 +12,7 @@ for argsfile in tests/golden/*.args; do
 	expected_code=$(cat "tests/golden/$name.code")
 	actual_out=$(mktemp)
 	actual_err=$(mktemp)
-	build/jit "${args[@]}" > "$actual_out" 2> "$actual_err"
+	build/jit "${args[@]}" > "$actual_out" 2> "$actual_err" < /dev/null
 	actual_code=$?
 	count=$((count + 1))
 	err_ok=1

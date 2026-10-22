@@ -382,8 +382,8 @@ check_api(void)
 	jit_free(e);
 
 	e = jit_parse("x", 0, &err);
-	CHECK(NULL == jit_compile(e, JIT_GCC, &err));
-	CHECK_STR(err.msg, "gcc backend arrives in a later version");
+	CHECK(NULL == jit_compile(e, JIT_WASM, &err));
+	CHECK_STR(err.msg, "wasm backend arrives in a later version");
 	jit_free(e);
 }
 

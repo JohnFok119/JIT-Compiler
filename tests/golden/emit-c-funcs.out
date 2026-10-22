@@ -1,0 +1,22 @@
+#include <math.h>
+double evaluate(const double *v) {
+double t0 = v[0];
+double t1 = sin(t0);
+double t2 = cos(t0);
+double t3 = tan(t0);
+double t4 = t2 * t3;
+double t5 = t1 + t4;
+double t6 = exp(t0);
+double t7 = log(t0);
+double t8 = t6 / t7;
+double t9 = t5 - t8;
+double t10 = tanh(t0);
+double t11 = 0x1p-1;
+double t12 = pow(t10, t11);
+double t13 = t9 + t12;
+double t14 = fabs(t0);
+double t15 = t13 + t14;
+double t16 = sqrt(t0);
+double t17 = t15 + t16;
+return t17;
+}

@@ -1,0 +1,5 @@
+--backend
+gcc
+--emit
+asm
+x+1

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "api.h"
+#include "backend/gcc/loader.h"
 #include "backend/x86_64/emit.h"
 #include "front/parser.h"
 
@@ -10,6 +11,7 @@ struct jit_fn {
 	enum jit_backend backend;
 	struct ir ir;             /* JIT_INTERP: snapshot of the nodes */
 	struct x86_code x86;      /* JIT_X86 */
+	struct gcc_code gcc;      /* JIT_GCC */
 };
 
 static jit_expr *
@@ -120,12 +122,11 @@ jit_compile(const jit_expr *e, enum jit_backend backend, struct jit_error *err)
 {
 	jit_fn *fn;
 
-	if (JIT_GCC == backend || JIT_WASM == backend) {
-		return compile_error(NULL, err, JIT_GCC == backend
-				     ? "gcc backend arrives in a later version"
-				     : "wasm backend arrives in a later version");
+	if (JIT_WASM == backend) {
+		return compile_error(NULL, err,
+				     "wasm backend arrives in a later version");
 	}
-	if (JIT_INTERP != backend && JIT_X86 != backend) {
+	if (JIT_INTERP != backend && JIT_X86 != backend && JIT_GCC != backend) {
 		return compile_error(NULL, err, "unknown backend");
 	}
 	if (!(fn = calloc(1, sizeof (*fn)))) {
@@ -135,6 +136,13 @@ jit_compile(const jit_expr *e, enum jit_backend backend, struct jit_error *err)
 	ir_init(&fn->ir);
 	if (JIT_X86 == backend) {
 		if (x86_compile(&e->ir, &fn->x86, err)) {
+			jit_fn_free(fn);
+			return NULL;
+		}
+		return fn;
+	}
+	if (JIT_GCC == backend) {
+		if (gcc_compile(&e->ir, &fn->gcc, err)) {
 			jit_fn_free(fn);
 			return NULL;
 		}
@@ -166,6 +174,11 @@ jit_entry(const jit_fn *fn)
 		/* object pointer -> function pointer without a pedantic cast */
 		memcpy(&f, &fn->x86.mem, sizeof (f));
 	}
+	else if (JIT_GCC == fn->backend) {
+		/* (a legacy module's evaluate takes no argument: the pointer is
+		   only good for jit_call) */
+		memcpy(&f, &fn->gcc.fn, sizeof (f));
+	}
 	return f;
 }
 
@@ -174,6 +187,9 @@ jit_call(const jit_fn *fn, const double *vars)
 {
 	if (JIT_X86 == fn->backend) {
 		return jit_entry(fn)(vars);
+	}
+	if (JIT_GCC == fn->backend) {
+		return gcc_call(&fn->gcc, vars);
 	}
 	return ir_interp(&fn->ir, vars);
 }
@@ -184,6 +200,7 @@ jit_fn_free(jit_fn *fn)
 	if (fn) {
 		ir_free(&fn->ir);
 		x86_code_free(&fn->x86);
+		gcc_code_free(&fn->gcc);
 		free(fn);
 	}
 }
@@ -193,6 +210,9 @@ jit_fn_dump(const jit_fn *fn, const char *stage, FILE *out)
 {
 	if (JIT_X86 == fn->backend) {
 		return x86_dump(&fn->x86, stage, out);
+	}
+	if (JIT_GCC == fn->backend) {
+		return gcc_dump(&fn->gcc, stage, out);
 	}
 	return -1;
 }

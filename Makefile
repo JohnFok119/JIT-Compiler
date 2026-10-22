@@ -61,6 +61,7 @@ $(X86FUZZ_BIN): tests/fuzz/x86fuzz.c tests/fuzz/gen.c tests/fuzz/gen.h $(LIB_OBJ
 check: all test-bin $(FUZZ_BIN) $(X86FUZZ_BIN)
 	@set -e; for t in $(TEST_BINS); do $$t; done
 	@bash tests/check-encoding.sh
+	@bash tests/check-repl.sh
 	@$(FUZZ_BIN)
 	@$(X86FUZZ_BIN)
 	@tests/run-golden.sh
