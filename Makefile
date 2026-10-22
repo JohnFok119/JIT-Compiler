@@ -8,22 +8,28 @@
 #
 
 CC     = gcc
-CFLAGS = -ansi -pedantic -Wall -Wextra -Werror -Wfatal-errors -fpic -O3
-LDLIBS = -lm
-DEST   = cs238
-SRCS  := $(wildcard *.c)
-OBJS  := $(SRCS:.c=.o)
+CFLAGS = -std=c11 -pedantic -Wall -Wextra -Werror -O2 -D_GNU_SOURCE -MMD -MP -Isrc
+LDLIBS = -lm -ldl
+BUILD  = build
+BIN    = $(BUILD)/jit
+SRCS  := $(shell find src -name '*.c')
+OBJS  := $(SRCS:%.c=$(BUILD)/%.o)
 
-all: $(OBJS)
-	@echo "[LN]" $(DEST)
-	@$(CC) -o $(DEST) $(OBJS) $(LDLIBS)
+all: $(BIN)
 
-%.o: %.c
+$(BIN): $(OBJS)
+	@echo "[LN]" $@
+	@mkdir -p $(dir $@)
+	@$(CC) -o $@ $(OBJS) $(LDLIBS)
+
+$(BUILD)/%.o: %.c
 	@echo "[CC]" $<
-	@$(CC) $(CFLAGS) -c $<
-	@$(CC) $(CFLAGS) -MM $< > $*.d
+	@mkdir -p $(dir $@)
+	@$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	@rm -f $(DEST) *.so *.o *.d *~ *#
+	@rm -rf $(BUILD)
 
 -include $(OBJS:.o=.d)
+
+.PHONY: all clean

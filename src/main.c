@@ -12,7 +12,6 @@
 #include "system.h"
 #include <math.h>
 
-/* export LD_LIBRARY_PATH=. */
 
 static void
 reflect(const struct parser_dag *dag, FILE *file)
@@ -80,7 +79,6 @@ generate(const struct parser_dag *dag, FILE *file)
 {
 	fprintf(file, "double evaluate(void) {\n");
 	reflect(dag, file);
-	printf("dag->id result: %d\n", dag->id);
 	fprintf(file, "double result = t%d;\n", dag->id);
 	/* fprintf(file, "double result = t%d;\n", dag->id); */
 	fprintf(file, "double (*sigmoidptr)(double) = (double (*)(double))%lu;\n", (unsigned long)sigmoid);
@@ -102,7 +100,7 @@ typedef double (*evaluate_t)(void);
 int
 main(int argc, char *argv[])
 {
-	const char *SOFILE = "out.so";
+	const char *SOFILE = "./out.so";
 	const char *CFILE = "out.c";
 	struct parser *parser;
 	struct jitc *jitc;

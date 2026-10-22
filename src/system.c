@@ -7,7 +7,6 @@
  * system.c
  */
 
-#define _GNU_SOURCE
 
 #include <unistd.h>
 #include "system.h"
