@@ -56,6 +56,9 @@ double ir_interp(const struct ir *, const double *vars);
 /* Reachable nodes from root, renumbered densely, then "ret %N". */
 void ir_print(const struct ir *, FILE *);
 
+/* The root expression in the language syntax (see src/ir/infix.c), then a newline. */
+void ir_infix(const struct ir *, FILE *);
+
 /*
  * Shortest of %.15g, %.16g, %.17g that round-trips; "nan" for every NaN,
  * "inf" / "-inf", "-0". len >= 32 is always enough.

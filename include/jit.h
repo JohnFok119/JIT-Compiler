@@ -24,8 +24,13 @@ const char *jit_var_name(const jit_expr *, int i);
 double      jit_interp(const jit_expr *, const double *vars);
 /* level 0: nothing; 2: all optimizer passes (no-op on legacy expressions). 0 ok, -1 bad level or out of memory (expression unchanged). */
 int         jit_optimize(jit_expr *, int level);
-/* stage: "tokens" | "ast" | "ir"; 0 ok, -1 unknown stage */
+/* Display form for printing: constant folding and the x*1, x/1, x-0, --x, x+(-0) identities only; keeps pow, x*2 and x/2^k as written. Same return values as jit_optimize. */
+int         jit_display_form(jit_expr *);
+/* stage: "tokens" | "ast" | "ir" | "infix"; 0 ok, -1 unknown stage (or tokens/ast of a derivative) */
 int         jit_dump(const jit_expr *, const char *stage, FILE *out);
+
+/* d(expr)/d(var), built with the zero/one rules (0 terms dropped, factors of 1 omitted) and returned in display form (jit_display_form); run jit_optimize(.., 2) before compiling for speed. Same variable table. An unknown var gives the constant 0. NULL on error (legacy expression, out of memory). The result may contain the internal step() op, so its infix text is not always parseable. */
+jit_expr *jit_diff(const jit_expr *, const char *var, struct jit_error *err);
 
 /* Compiled functions. jit_compile takes a snapshot: the jit_fn stays valid
  * after jit_free(expr). */

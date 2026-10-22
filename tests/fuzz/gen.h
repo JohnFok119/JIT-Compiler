@@ -21,4 +21,8 @@ uint64_t gen_below(uint64_t *rng, uint64_t n);
  */
 void gen_expr(uint64_t *rng, char *buf, size_t cap, int max_depth, int nvars);
 
+/* As gen_expr; smooth != 0 leaves out abs, relu, min and max. */
+void gen_expr_ex(uint64_t *rng, char *buf, size_t cap, int max_depth, int nvars,
+		 int smooth);
+
 #endif /* FUZZ_GEN_H */

@@ -10,8 +10,8 @@
 #include "ir/ir.h"
 
 #define USAGE \
-	"usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|asm|hex|c] " \
-	"[--backend interp|x86|gcc] [--help] [--version] " \
+	"usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|infix|asm|hex|c] " \
+	"[--diff VAR] [--backend interp|x86|gcc] [--help] [--version] " \
 	"'<expr>' [name=value ...]"
 
 #define MAX_LINE 4096
@@ -21,6 +21,7 @@ struct opts {
 	int legacy;
 	int backend;            /* enum jit_backend, or -1 = default */
 	int opt;                /* 0 or 2 */
+	const char *diff;       /* NULL, or the variable to differentiate by */
 };
 
 static int use_color;       /* red "error:" and dim caret, only on a TTY */
@@ -44,8 +45,13 @@ help(void)
 	       "  -O0 | -O2                  optimizer level (default -O2)\n"
 	       "      jit -O0 '2 * 3 + x' x=1\n"
 	       "  --emit STAGE               print a stage instead of running; STAGE is\n"
-	       "                             tokens, ast, ir, asm, hex (x86 backend) or c (gcc backend)\n"
+	       "                             tokens, ast, ir, infix, asm, hex (x86 backend) or c (gcc backend)\n"
 	       "      jit --emit ir 'x * 1 + 0'\n"
+	       "  --diff VAR                 differentiate by VAR: prints the derivative as an expression\n"
+	       "                             (or its value, given name=value); kinks show as step(...),\n"
+	       "                             which is printed but not parseable\n"
+	       "      jit --diff x 'x^3 + sin(x)*x'\n"
+	       "      jit --diff x 'sigmoid(3*x)' x=0.2\n"
 	       "      jit --backend gcc --emit c 'sigmoid(x) * 2'\n"
 	       "  --legacy                   the original assignment: sigmoid of the result, x/0 = 0\n"
 	       "      jit --legacy '10 / 4'\n"
@@ -154,12 +160,38 @@ evaluate_expr(const struct opts *o, const char *src, const char **bind,
 	if (legacy) {
 		opt = 0;        /* legacy is never optimized */
 	}
+	if (o->diff) {
+		jit_expr *d;
+
+		/* tokens and ast describe the input; everything else, the derivative */
+		if (emit && (!strcmp(emit, "tokens") || !strcmp(emit, "ast"))) {
+			jit_dump(e, emit, stdout);
+			if (!repl) {
+				status = 0;
+				goto done;
+			}
+			emit = NULL;
+		}
+		if (!(d = jit_diff(e, o->diff, &err))) {
+			errorf("%s", err.msg);
+			goto done;
+		}
+		jit_free(e);
+		e = d;
+		if (!emit && !nbind) {
+			emit = "infix";
+		}
+	}
 	/* asm / hex / c dump the compiled code, so they go through jit_compile */
 	code_emit = emit && (!strcmp(emit, "asm") || !strcmp(emit, "hex") ||
 			     !strcmp(emit, "c"));
 	if (emit && !code_emit) {
+		if (!strcmp(emit, "infix") && opt && jit_display_form(e)) {
+			errorf("out of memory");
+			goto done;
+		}
 		jit_dump(e, emit, stdout);
-		if (opt && !strcmp(emit, "ir")) {
+		if (opt && !o->diff && !strcmp(emit, "ir")) {
 			if (jit_optimize(e, opt)) {
 				errorf("out of memory");
 				goto done;
@@ -307,9 +339,10 @@ repl(struct opts o)
 
 			sscanf(p + 5, "%15s", want);
 			if (strcmp(want, "tokens") && strcmp(want, "ast") &&
-			    strcmp(want, "ir") && strcmp(want, "asm") &&
+			    strcmp(want, "ir") && strcmp(want, "infix") &&
+			    strcmp(want, "asm") &&
 			    strcmp(want, "hex") && strcmp(want, "c")) {
-				errorf("usage: :emit tokens|ast|ir|asm|hex|c");
+				errorf("usage: :emit tokens|ast|ir|infix|asm|hex|c");
 			}
 			else if (!strcmp(stage, want)) {
 				stage[0] = '\0';
@@ -334,7 +367,7 @@ repl(struct opts o)
 int
 main(int argc, char *argv[])
 {
-	struct opts o = { NULL, 0, -1, 2 };
+	struct opts o = { NULL, 0, -1, 2, NULL };
 	const char *src, **bind;
 	int i = 1, j;
 
@@ -364,12 +397,20 @@ main(int argc, char *argv[])
 			    (strcmp(argv[i + 1], "tokens") &&
 			     strcmp(argv[i + 1], "ast") &&
 			     strcmp(argv[i + 1], "ir") &&
+			     strcmp(argv[i + 1], "infix") &&
 			     strcmp(argv[i + 1], "asm") &&
 			     strcmp(argv[i + 1], "hex") &&
 			     strcmp(argv[i + 1], "c"))) {
 				return usage();
 			}
 			o.emit = argv[i + 1];
+			i += 2;
+		}
+		else if (!strcmp(a, "--diff")) {
+			if (i + 1 >= argc || !argv[i + 1][0]) {
+				return usage();
+			}
+			o.diff = argv[i + 1];
 			i += 2;
 		}
 		else if (!strcmp(a, "--backend")) {

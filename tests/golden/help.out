@@ -1,4 +1,4 @@
-usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|asm|hex|c] [--backend interp|x86|gcc] [--help] [--version] '<expr>' [name=value ...]
+usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|infix|asm|hex|c] [--diff VAR] [--backend interp|x86|gcc] [--help] [--version] '<expr>' [name=value ...]
 
 With no expression on a terminal, jit starts an interactive prompt.
 
@@ -8,8 +8,13 @@ options (one example each):
   -O0 | -O2                  optimizer level (default -O2)
       jit -O0 '2 * 3 + x' x=1
   --emit STAGE               print a stage instead of running; STAGE is
-                             tokens, ast, ir, asm, hex (x86 backend) or c (gcc backend)
+                             tokens, ast, ir, infix, asm, hex (x86 backend) or c (gcc backend)
       jit --emit ir 'x * 1 + 0'
+  --diff VAR                 differentiate by VAR: prints the derivative as an expression
+                             (or its value, given name=value); kinks show as step(...),
+                             which is printed but not parseable
+      jit --diff x 'x^3 + sin(x)*x'
+      jit --diff x 'sigmoid(3*x)' x=0.2
       jit --backend gcc --emit c 'sigmoid(x) * 2'
   --legacy                   the original assignment: sigmoid of the result, x/0 = 0
       jit --legacy '10 / 4'

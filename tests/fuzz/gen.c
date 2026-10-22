@@ -38,9 +38,23 @@ static const char *const FN1[] = {
 
 static const char *const FN2[] = { "min", "max", "pow" };
 
+/* Smooth mode: no abs, relu, min, max (differentiable almost everywhere). */
+static const char *const SMOOTH1[] = {
+	"sin", "cos", "tan", "exp", "log", "sqrt", "tanh", "sigmoid"
+};
+#define NSMOOTH1 (sizeof (SMOOTH1) / sizeof (SMOOTH1[0]))
+
+/* Smooth mode also drops the extreme constants (1e300, 1e-300, inf, nan): a
+   finite difference through them measures rounding, not the function. */
+static const char *const SMOOTH_CONSTS[] = {
+	"0", "1", "(-1)", "2", "(-2)", "0.5", "3", "4", "0.25", "10", "pi", "e"
+};
+#define NSMOOTH_CONSTS (sizeof (SMOOTH_CONSTS) / sizeof (SMOOTH_CONSTS[0]))
+
 struct out {
 	char *buf;
 	size_t cap, len;
+	int smooth;
 };
 
 static void
@@ -66,7 +80,8 @@ leaf(uint64_t *rng, struct out *o, int nvars)
 		put(o, VARS[gen_below(rng, (uint64_t)nvars)]);
 	}
 	else {
-		put(o, CONSTS[gen_below(rng, NCONSTS)]);
+		put(o, o->smooth ? SMOOTH_CONSTS[gen_below(rng, NSMOOTH_CONSTS)]
+				 : CONSTS[gen_below(rng, NCONSTS)]);
 	}
 }
 
@@ -75,7 +90,8 @@ static void
 rhs(uint64_t *rng, struct out *o, int depth, int nvars)
 {
 	if (gen_below(rng, 3) == 0) {
-		put(o, HOT[gen_below(rng, NHOT)]);
+		put(o, o->smooth ? SMOOTH_CONSTS[gen_below(rng, NSMOOTH_CONSTS)]
+				 : HOT[gen_below(rng, NHOT)]);
 	}
 	else {
 		node(rng, o, depth, nvars);
@@ -115,13 +131,14 @@ node(uint64_t *rng, struct out *o, int depth, int nvars)
 		put(o, ")");
 	}
 	else if (k < 8) {                  /* one-argument function */
-		put(o, FN1[gen_below(rng, NFN1)]);
+		put(o, o->smooth ? SMOOTH1[gen_below(rng, NSMOOTH1)]
+				 : FN1[gen_below(rng, NFN1)]);
 		put(o, "(");
 		node(rng, o, depth - 1, nvars);
 		put(o, ")");
 	}
 	else {                             /* two-argument function */
-		const char *f = FN2[gen_below(rng, 3)];
+		const char *f = FN2[o->smooth ? 2 : gen_below(rng, 3)];
 
 		put(o, f);
 		put(o, "(");
@@ -133,7 +150,8 @@ node(uint64_t *rng, struct out *o, int depth, int nvars)
 }
 
 void
-gen_expr(uint64_t *rng, char *buf, size_t cap, int max_depth, int nvars)
+gen_expr_ex(uint64_t *rng, char *buf, size_t cap, int max_depth, int nvars,
+	    int smooth)
 {
 	struct out o;
 
@@ -146,8 +164,15 @@ gen_expr(uint64_t *rng, char *buf, size_t cap, int max_depth, int nvars)
 	o.buf = buf;
 	o.cap = cap;
 	o.len = 0;
+	o.smooth = smooth;
 	if (cap) {
 		buf[0] = 0;
 	}
 	node(rng, &o, max_depth, nvars);
+}
+
+void
+gen_expr(uint64_t *rng, char *buf, size_t cap, int max_depth, int nvars)
+{
+	gen_expr_ex(rng, buf, cap, max_depth, nvars, 0);
 }

@@ -46,7 +46,8 @@ reachable(const struct ir *ir, char *live)
 	return n;
 }
 
-/* One rebuild of the reachable nodes of `in` into `out`; rules on or off. */
+/* One rebuild of the reachable nodes of `in` into `out`; rules 0 = none,
+   1 = fold and identities only (display form), 2 = all. */
 static int
 rebuild(const struct ir *in, struct ir *out, int rules, int *count, int *fired)
 {
@@ -83,10 +84,12 @@ rebuild(const struct ir *in, struct ir *out, int rules, int *count, int *fired)
 		else {
 			if (rules) {
 				r = opt_fold(out, n->op, a, b);
-				if (OPT_NONE == r) {
+				if (OPT_NONE == r && !(1 == rules && IR_MUL == n->op &&
+						       (opt_is_bits(out, a, 2.0) ||
+							opt_is_bits(out, b, 2.0)))) {
 					r = opt_simplify(out, n->op, a, b);
 				}
-				if (OPT_NONE == r) {
+				if (OPT_NONE == r && 2 == rules) {
 					r = opt_strength(out, n->op, a, b);
 				}
 				if (OPT_NONE != r) {
@@ -116,8 +119,8 @@ rebuild(const struct ir *in, struct ir *out, int rules, int *count, int *fired)
 	return 0;
 }
 
-int
-jit_optimize(jit_expr *e, int level)
+static int
+optimize(jit_expr *e, int level)
 {
 	struct ir cur, next;
 	int round, count, fired;
@@ -125,7 +128,7 @@ jit_optimize(jit_expr *e, int level)
 	if (0 == level) {
 		return 0;
 	}
-	if (2 != level) {
+	if (1 != level && 2 != level) {
 		return -1;
 	}
 	if (e->ir.legacy) {
@@ -133,7 +136,7 @@ jit_optimize(jit_expr *e, int level)
 	}
 	cur = e->ir;
 	for (round = 0; round < MAX_ROUNDS; ++round) {
-		if (rebuild(&cur, &next, 1, &count, &fired)) {
+		if (rebuild(&cur, &next, level, &count, &fired)) {
 			if (cur.nodes != e->ir.nodes) {
 				ir_free(&cur);
 			}
@@ -157,4 +160,16 @@ jit_optimize(jit_expr *e, int level)
 	ir_free(&e->ir);
 	e->ir = next;
 	return 0;
+}
+
+int
+jit_optimize(jit_expr *e, int level)
+{
+	return 1 == level ? -1 : optimize(e, level);
+}
+
+int
+jit_display_form(jit_expr *e)
+{
+	return optimize(e, 1);
 }

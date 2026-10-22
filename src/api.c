@@ -93,7 +93,13 @@ jit_interp(const jit_expr *e, const double *vars)
 int
 jit_dump(const jit_expr *e, const char *stage, FILE *out)
 {
-	if (!strcmp(stage, "tokens")) {
+	if (!strcmp(stage, "infix")) {
+		ir_infix(&e->ir, out);
+	}
+	else if (!e->src && (!strcmp(stage, "tokens") || !strcmp(stage, "ast"))) {
+		return -1;      /* a derivative has no source text */
+	}
+	else if (!strcmp(stage, "tokens")) {
 		token_list_print(&e->toks, e->src, out);
 	}
 	else if (!strcmp(stage, "ast")) {
