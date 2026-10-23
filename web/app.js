@@ -1,43 +1,56 @@
 // URL parameters (all optional):
-//   ?expr=<formula>  fill the input with this formula (URL-encoded)
-//   ?drop=1          press "Drop the ball" once, after the first graph is drawn
-//   ?x0=<number>     start the ball at this x (clamped to -4..4) instead of a random x
-//   ?race=1          run the race once: after the ball settles when drop=1, else right after the first compile
+//   ?expr=<formula>  fill the input with this formula (URL-encoded); default 0.5*x^2 + sin(2*x)
+//   ?drop=1          press "Find the lowest point" once, after the first graph is drawn
+//   ?x0=<number>     start the descent at this x (clamped to -4..4) instead of a random x
+//   ?speed=<1..30>   descent speed in steps per second (default 3; clamped; the slider sets it too)
+//   ?race=1          open "Under the hood" and run the speed test once: after the descent
+//                    settles when drop=1, else right after the first compile
+//   ?open=1          open "Under the hood" (so does the #under-the-hood fragment)
 //
-// Live demo page: compile a formula to WebAssembly in the browser, show the
-// engine's stages, graph f and f', roll a gradient-descent ball, race the
-// compiled code against the interpreter. No network calls, no dependencies.
+// Demo page: compile a formula to WebAssembly in the browser, graph f and f',
+// show its derivative and value, roll a gradient-descent ball to the lowest
+// point, and expose the engine's stages and a speed test behind "Under the
+// hood". No network calls, no dependencies.
 import createEngine from './engine.mjs';
 import { mathImports } from './imports.mjs';
 
 const $ = (id) => document.getElementById(id);
-const exprEl = $('expr'), errEl = $('err'), codeEl = $('code'), capEl = $('caption');
-const tabsEl = $('tabs'), canvas = $('plot'), slidersEl = $('sliders');
-const dropBtn = $('dropBtn'), dropInfo = $('dropInfo'), raceBtn = $('raceBtn');
+const exprEl = $('expr'), errBox = $('err'), errMsg = $('errMsg'), errCaret = $('errCaret');
+const codeEl = $('code'), capEl = $('caption'), tabsEl = $('tabs'), canvas = $('plot');
+const dropBtn = $('dropBtn'), dropInfo = $('dropInfo'), raceBtn = $('raceBtn'), raceOut = $('raceOut');
+const term = $('term');
+const atEl = $('at'), hood = $('under-the-hood');
 
 const XMIN = -4, XMAX = 4;
+const RACE_FALLBACK = '((3*x - 2)*x + 5)*x - 1';
 
 const STAGES = [
-  { id: 'tokens', label: 'tokens', stage: 'tokens', cap: 'tokens: the formula chopped into its smallest pieces, such as numbers, names and symbols.' },
-  { id: 'tree', label: 'tree', stage: 'ast', cap: 'tree: how the pieces fit together, like a family tree. Multiplication binds tighter than addition, and so on.' },
-  { id: 'steps', label: 'steps (IR)', stage: 'ir', cap: 'steps (IR): the formula as a flat list of simple steps. IR means intermediate representation, a middle language the compiler works in.' },
-  { id: 'tidied', label: 'tidied (IR)', stage: 'ir_opt', cap: 'tidied (IR): the same steps after the -O2 clean-up passes, which remove repeated work and fold constants.' },
-  { id: 'x86', label: 'x86-64', stage: 'asm', cap: "x86-64: the machine code this engine writes for a laptop processor. Your browser can't run x86, so the page runs the WebAssembly version below instead." },
-  { id: 'bytes', label: 'bytes', stage: 'hex', cap: 'bytes: those same x86-64 instructions as raw bytes in hexadecimal, exactly what would sit in memory.' },
-  { id: 'wasm', label: 'wasm', stage: 'wasm', cap: 'wasm: the WebAssembly module generated for this formula, as hexadecimal bytes. This is what your browser actually runs.' },
-  { id: 'slope', label: 'slope', stage: 'diff', cap: "slope: the derivative f′(x), worked out by the compiler itself. It is how fast the answer changes when x changes." },
+  { id: 'steps', label: 'Steps', stage: 'ir_opt', cap: "The formula as a flat list of simple steps, after clean-up: repeated work is merged and constants are folded. This is the compiler's middle language." },
+  { id: 'x86', label: 'Machine code (x86-64)', stage: 'asm', cap: "The x86-64 machine code this engine writes for a laptop processor. Your browser can't run it, so this page runs the WebAssembly version." },
+  { id: 'wasm', label: 'WebAssembly', stage: 'wasm', cap: 'The WebAssembly module generated for this formula, as hexadecimal bytes. This is what your browser actually runs.' },
+  { id: 'tokens', label: 'Tokens', stage: 'tokens', cap: 'The formula chopped into its smallest pieces: numbers, names and symbols.' },
+  { id: 'tree', label: 'Tree', stage: 'ast', cap: 'How the pieces fit together, like a family tree. Multiplication binds tighter than addition, and so on.' },
 ];
 
 let M, api;
 let cur = null;            // current compiled formula
-let tab = 'x86';
+let tab = 'steps';
 let stageCache = {};
 let ball = null;           // running gradient descent
 let ballTimer = 0;
+let stepsPerSecond = 3;    // descent speed, set by the Speed slider
+let slideFrame = 0;        // requestAnimationFrame id of the ball slide
+let curRow = null;         // the newest step row in the log
+const speedEl = $('speed'), speedOut = $('speedOut');
 let sliderVals = {};       // by variable name
+let atX = 1;               // the "At x =" value
 let dropOnLoad = false;
 let startX = null;         // from ?x0=
 let raceOnLoad = false;    // from ?race=1; cleared once the race has run
+
+const minus = (s) => s.replace(/-/g, '−');
+const fmt = (v, d) => (Number.isFinite(v) ? minus(v.toFixed(d)) : 'n/a');
+const fmtSig = (v) => (Number.isFinite(v) ? minus(String(Number(v.toPrecision(6)))) : 'not a number');
 
 // ---------- engine ----------
 async function boot() {
@@ -70,19 +83,26 @@ function instantiate(h, which) {
 function showError(src, json) {
   let e;
   try { e = JSON.parse(json); } catch { e = { pos: -1, msg: 'unknown error' }; }
-  errEl.hidden = false;
-  errEl.textContent = e.pos >= 0
-    ? src + '\n' + ' '.repeat(e.pos) + '^ ' + e.msg
-    : e.msg;
+  errBox.hidden = false;
+  errMsg.textContent = "This formula can't be read: " + e.msg + '.' + (cur ? ' The graph still shows the last working formula.' : '');
+  errCaret.textContent = e.pos >= 0 ? src + '\n' + ' '.repeat(e.pos) + '^' : '';
+  errCaret.hidden = e.pos < 0;
+}
+
+function clearError() {
+  errBox.hidden = true;
+  errMsg.textContent = '';
+  errCaret.textContent = '';
 }
 
 function compile(src) {
   if (!api) return false;
   stopBall();
+  const t0 = performance.now();
   const h = api.load(src, 2);
+  const ms = performance.now() - t0;
   if (!h) {
     showError(src, api.errorJson());
-    if (tab === "tokens") codeEl.textContent = errEl.textContent;
     return false;                     // keep showing the last good formula
   }
   let f, fp;
@@ -91,26 +111,53 @@ function compile(src) {
     fp = instantiate(h, 1);
   } catch (e) {
     api.free(h);
-    errEl.hidden = false;
-    errEl.textContent = String(e.message || e);
+    errBox.hidden = false;
+    errMsg.textContent = String(e.message || e);
+    errCaret.textContent = '';
+    errCaret.hidden = true;
     return false;
   }
-  errEl.hidden = true;
-  errEl.textContent = '';
+  clearError();
   if (cur) api.free(cur.h);
   const n = api.nvars(h);
   const names = [];
   for (let i = 0; i < n; i++) names.push(api.varName(h, i));
-  cur = { h, src, f, fp, n, names, vals: names.map((nm) => (nm in sliderVals ? sliderVals[nm] : 1)) };
+  cur = { h, src, f, fp, n, names, ms, vals: names.map((nm) => (nm in sliderVals ? sliderVals[nm] : 1)) };
   stageCache = {};
   sampled = null;
   buildSliders();
   renderStage();
-  resetRace();
+  renderResults();
+  raceOut.textContent = '';
   dropInfo.textContent = '';
+  termIdle();
   ball = null;
   draw();
   return true;
+}
+
+// ---------- descent log ----------
+const TERM_MAX_ROWS = 250;
+function termLine(text, cls) {
+  // returns the new row element
+  const span = document.createElement('span');
+  if (cls) span.className = cls;
+  span.appendChild(document.createTextNode(text + '\n'));
+  const stick = term.scrollTop + term.clientHeight >= term.scrollHeight - 4;
+  term.appendChild(span);
+  while (term.childNodes.length > TERM_MAX_ROWS) term.removeChild(term.firstChild);
+  if (stick) term.scrollTop = term.scrollHeight;
+  return span;
+}
+function termIdle() {
+  term.textContent = '';
+  curRow = null;
+  termLine('Press "Find the lowest point" to log every step here.', 'm');
+}
+function termRow() {
+  if (curRow) curRow.classList.remove('cur');
+  curRow = termLine(String(ball.step).padStart(4) + fmt(ball.x, 4).padStart(9) + fmt(F(ball.x), 4).padStart(10) +
+    fmt(D(ball.x), 4).padStart(10) + fmt(ball.lr, 4).padStart(8), 'cur');
 }
 
 // ---------- evaluation ----------
@@ -122,6 +169,40 @@ function args(x) {
 const F = (x) => cur.f(...args(x));
 const D = (x) => cur.fp(...args(x));
 const xName = () => (cur.n > 0 ? cur.names[0] : 'x');
+
+// ---------- results list ----------
+function stageText(id) {
+  const s = STAGES.find((t) => t.id === id);
+  if (!(id in stageCache)) {
+    const t = api.stage(cur.h, s.stage);
+    stageCache[id] = t === null || t === undefined || t === ''
+      ? '(' + (JSON.parse(api.errorJson()).msg || 'nothing to show') + ')'
+      : t;
+  }
+  return stageCache[id];
+}
+
+function renderResults() {
+  const x = xName();
+  $('atLabel').textContent = 'At ' + x + ' =';
+  const d = api.stage(cur.h, 'diff');
+  $('deriv').textContent = d === null || d === undefined || d === '' ? 'not available' : d.trim();
+  const asm = stageText('x86');
+  const lines = asm.split('\n');               // instruction lines first, then a "; constant pool" section
+  const end = lines.findIndex((l) => l.startsWith(';'));
+  const insns = lines.slice(0, end < 0 ? lines.length : end).filter((l) => /^[0-9a-f]{4}\s/.test(l)).length;
+  const bytes = api.wasmLen(cur.h, 0);
+  $('compiled').textContent = insns + ' x86-64 instructions · ' + bytes + ' bytes of WebAssembly · compiled in ' +
+    (cur.ms < 10 ? cur.ms.toFixed(1) : cur.ms.toFixed(0)) + ' ms · checked against the reference interpreter';
+  renderValues();
+}
+
+function renderValues() {
+  if (!cur) return;
+  for (let i = 0; i < cur.n; i++) api.setVar(cur.h, i, i === 0 ? atX : cur.vals[i]);
+  $('fval').textContent = 'f = ' + fmtSig(api.interp(cur.h, 0));
+  $('dval').textContent = 'f′ = ' + fmtSig(api.interp(cur.h, 1));
+}
 
 // ---------- stage tabs ----------
 function buildTabs() {
@@ -160,41 +241,43 @@ function renderStage() {
   const s = STAGES.find((t) => t.id === tab);
   capEl.textContent = s.cap;
   codeEl.setAttribute('aria-labelledby', 'tab-' + tab);
-  codeEl.classList.toggle('wrap', tab === 'bytes' || tab === 'wasm');
-  if (!cur) { codeEl.textContent = ''; return; }
-  if (!(s.id in stageCache)) {
-    const t = api.stage(cur.h, s.stage);
-    stageCache[s.id] = t === null || t === undefined || t === ''
-      ? '(' + (JSON.parse(api.errorJson()).msg || 'nothing to show') + ')'
-      : t;
-  }
-  codeEl.textContent = stageCache[s.id];
+  codeEl.classList.toggle('wrap', tab === 'wasm');
+  codeEl.textContent = cur ? stageText(tab) : '';
 }
 
-// ---------- sliders ----------
+// ---------- sliders (one row per variable after the first) ----------
 function buildSliders() {
-  slidersEl.textContent = '';
+  for (const r of document.querySelectorAll('.sliderrow')) r.remove();
+  const before = $('compiledRow');
   for (let i = 1; i < cur.n; i++) {
     const nm = cur.names[i];
+    const row = document.createElement('div');
+    row.className = 'row sliderrow';
+    const dt = document.createElement('dt');
     const lab = document.createElement('label');
-    const name = document.createElement('span');
-    name.textContent = nm + ' =';
+    lab.htmlFor = 'slider-' + i;
+    lab.textContent = nm + ' =';
+    dt.appendChild(lab);
+    const dd = document.createElement('dd');
     const inp = document.createElement('input');
+    inp.id = 'slider-' + i;
     inp.type = 'range'; inp.min = '-3'; inp.max = '3'; inp.step = '0.05';
     inp.value = String(cur.vals[i]);
-    inp.setAttribute('aria-label', 'value of ' + nm);
     const out = document.createElement('span');
-    out.textContent = Number(inp.value).toFixed(2);
+    out.className = 'mono sliderval';
+    out.textContent = fmt(cur.vals[i], 2);
     inp.addEventListener('input', () => {
       cur.vals[i] = parseFloat(inp.value);
       sliderVals[nm] = cur.vals[i];
-      out.textContent = cur.vals[i].toFixed(2);
+      out.textContent = fmt(cur.vals[i], 2);
       sampled = null;
-      stopBall(); ball = null; dropInfo.textContent = '';
+      stopBall(); ball = null; dropInfo.textContent = ''; termIdle();
+      renderValues();
       draw();
     });
-    lab.append(name, inp, out);
-    slidersEl.appendChild(lab);
+    dd.append(inp, out);
+    row.append(dt, dd);
+    before.parentNode.insertBefore(row, before);
   }
 }
 
@@ -223,12 +306,24 @@ function yRange(fy, dy) {
   return [lo - pad, hi + pad];
 }
 
+// 1, 2 or 5 times a power of ten, giving about `want` ticks over the span
+function niceStep(span, want) {
+  const raw = span / want, p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
+  return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
+}
+
+function tickLabel(v, step) {
+  const dec = step >= 1 ? 0 : Math.min(6, Math.ceil(-Math.log10(step)));
+  return minus((Math.abs(v) < step * 1e-9 ? 0 : v).toFixed(dec));
+}
+
 function draw() {
   if (!cur) return;
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth || 300;
-  const h = Math.round(w * 0.62);
+  const h = Math.round(w * 0.75);
   canvas.style.height = h + 'px';
+  term.style.height = window.matchMedia('(min-width: 1200px)').matches ? h + 'px' : '';
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
   const c = canvas.getContext('2d');
@@ -237,21 +332,33 @@ function draw() {
 
   const { xs, fy, dy } = sample();
   const [ylo, yhi] = yRange(fy, dy);
-  const padL = 6, padR = 6, padT = 8, padB = 8;
+  const padL = 48, padR = 16, padT = 16, padB = 32;
   const sx = (x) => padL + (x - XMIN) / (XMAX - XMIN) * (w - padL - padR);
   const sy = (y) => padT + (yhi - y) / (yhi - ylo) * (h - padT - padB);
   view = { sx, sy, ylo, yhi, h };
 
   const navy = css('--navy'), gold = css('--gold'), red = css('--red'), lo = css('--lo'), muted = css('--muted');
-  // axes
-  c.strokeStyle = lo; c.lineWidth = 1.5;
+  const mono = css('--mono');
+
+  // light grid, axes, tick labels on both axes
+  c.font = '14px ' + mono; c.fillStyle = muted;
+  c.strokeStyle = lo; c.lineWidth = 1;
   c.beginPath();
-  if (ylo < 0 && yhi > 0) { c.moveTo(sx(XMIN), sy(0)); c.lineTo(sx(XMAX), sy(0)); }
-  c.moveTo(sx(0), padT); c.lineTo(sx(0), h - padB);
+  for (let x = XMIN; x <= XMAX; x++) { c.moveTo(Math.round(sx(x)) + 0.5, padT); c.lineTo(Math.round(sx(x)) + 0.5, h - padB); }
+  const ystep = niceStep(yhi - ylo, 6);
+  const yticks = [];
+  for (let v = Math.ceil(ylo / ystep) * ystep; v <= yhi + ystep * 1e-9; v += ystep) yticks.push(v);
+  for (const v of yticks) { const py = Math.round(sy(v)) + 0.5; c.moveTo(padL, py); c.lineTo(w - padR, py); }
   c.stroke();
-  c.fillStyle = muted; c.font = '11px ' + css('--mono');
-  c.fillText(String(XMIN), sx(XMIN) + 2, h - 12);
-  c.fillText(String(XMAX), sx(XMAX) - 12, h - 12);
+  c.textAlign = 'center'; c.textBaseline = 'top';
+  for (let x = XMIN; x <= XMAX; x++) c.fillText(minus(String(x)), sx(x), h - padB + 8);
+  c.textAlign = 'right'; c.textBaseline = 'middle';
+  for (const v of yticks) c.fillText(tickLabel(v, ystep), padL - 8, sy(v));
+  c.strokeStyle = muted; c.lineWidth = 1;
+  c.beginPath();
+  if (ylo < 0 && yhi > 0) { c.moveTo(padL, Math.round(sy(0)) + 0.5); c.lineTo(w - padR, Math.round(sy(0)) + 0.5); }
+  c.moveTo(Math.round(sx(0)) + 0.5, padT); c.lineTo(Math.round(sx(0)) + 0.5, h - padB);
+  c.stroke();
 
   const line = (ys, color, width, dash) => {
     c.strokeStyle = color; c.lineWidth = width; c.setLineDash(dash);
@@ -265,9 +372,9 @@ function draw() {
     c.stroke(); c.setLineDash([]);
   };
   c.save();
-  c.beginPath(); c.rect(0, 0, w, h); c.clip();
-  line(dy, gold, 2, [6, 4]);
-  line(fy, navy, 2.5, []);
+  c.beginPath(); c.rect(padL, padT, w - padL - padR, h - padT - padB); c.clip();
+  line(dy, gold, 1.5, [6, 4]);
+  line(fy, navy, 2, []);
   c.restore();
 
   // ball and trail
@@ -276,14 +383,18 @@ function draw() {
       const y = F(x);
       return [sx(x), sy(Math.min(Math.max(Number.isFinite(y) ? y : ylo, ylo), yhi))];
     };
-    c.strokeStyle = red; c.lineWidth = 1.5; c.setLineDash([2, 4]);
+    c.strokeStyle = red; c.lineWidth = 1; c.setLineDash([2, 4]);
     c.beginPath();
-    ball.trail.forEach((x, i) => { const [px, py] = pt(x); if (i) c.lineTo(px, py); else c.moveTo(px, py); });
+    const bxv = ball.dx !== undefined ? ball.dx : ball.x;   // displayed x (mid-slide it lags ball.x)
+    ball.trail.slice(0, -1).concat([bxv]).forEach((x, i) => { const [px, py] = pt(x); if (i) c.lineTo(px, py); else c.moveTo(px, py); });
     c.stroke(); c.setLineDash([]);
     c.fillStyle = red;
     ball.trail.slice(0, -1).forEach((x) => { const [px, py] = pt(x); c.beginPath(); c.arc(px, py, 2, 0, 6.2832); c.fill(); });
-    const [bx, by] = pt(ball.x);
-    c.beginPath(); c.arc(bx, by, 7, 0, 6.2832); c.fill();
+    const [bx, by] = pt(bxv);
+    c.beginPath(); c.arc(bx, by, 6, 0, 6.2832); c.fill();
+    c.font = '14px ' + mono; c.fillStyle = red; c.textBaseline = 'bottom';
+    c.textAlign = bx > w - padR - 32 ? 'right' : 'left';
+    c.fillText(String(ball.step), bx + (c.textAlign === 'left' ? 8 : -8), by - 8);
   }
   const others = cur.n > 1 ? ' with ' + cur.names.slice(1).map((nm, k) => nm + ' = ' + cur.vals[k + 1].toFixed(2)).join(', ') : '';
   canvas.setAttribute('aria-label',
@@ -292,32 +403,44 @@ function draw() {
 
 // ---------- gradient descent ----------
 function stopBall() {
-  if (ballTimer) { clearInterval(ballTimer); ballTimer = 0; }
+  if (ballTimer) { clearTimeout(ballTimer); ballTimer = 0; }
+  if (slideFrame) { cancelAnimationFrame(slideFrame); slideFrame = 0; }
+  if (ball) delete ball.dx;
   dropBtn.disabled = false;
 }
 
-function dropTheBall() {
+function findLowest() {
   if (!cur) return;
   stopBall();
   ball = { x: startX !== null ? Math.min(XMAX, Math.max(XMIN, startX)) : XMIN + 0.5 + Math.random() * (XMAX - XMIN - 1), lr: 0.1, step: 0, trail: [], done: false };
   ball.trail.push(ball.x);
+  term.textContent = '';
+  curRow = null;
+  termLine('$ descend ' + cur.src + ' from ' + xName() + ' = ' + fmt(ball.x, 3), 'm');
+  termLine('step'.padStart(4) + 'x'.padStart(9) + 'f(x)'.padStart(10) + 'slope'.padStart(10) + 'size'.padStart(8), 'm nw');
+  termRow();
   dropBtn.disabled = true;
-  ballTimer = setInterval(stepBall, 1000 / 30);
+  ballTimer = setTimeout(stepBall, 1000 / stepsPerSecond);
   report();
   draw();
 }
 
 function report() {
   const f = F(ball.x);
-  dropInfo.textContent = 'step ' + ball.step + ' · ' + xName() + ' = ' + ball.x.toFixed(5) +
-    ' · f = ' + (Number.isFinite(f) ? f.toPrecision(5) : 'n/a') + (ball.done ? ' · ' + ball.why : '');
+  const here = xName() + ' = ' + fmt(ball.x, 3) + ' (f = ' + fmt(f, 3) + ')';
+  const steps = ball.step + (ball.step === 1 ? ' step' : ' steps');
+  if (!ball.done) { dropInfo.textContent = 'Searching: ' + here + ' after ' + steps + '.'; return; }
+  dropInfo.textContent = ball.settled
+    ? 'Lowest point near ' + here + ' after ' + steps + '. This is gradient descent, the method neural networks use to learn.'
+    : 'Stopped near ' + here + ' after ' + steps + ': ' + ball.why + '. This is gradient descent, the method neural networks use to learn.';
 }
 
 function stepBall() {
+  ballTimer = 0;
   const g = D(ball.x);
   const f0 = F(ball.x);
-  if (!Number.isFinite(g) || !Number.isFinite(f0)) return finish('slope is not a number here');
-  if (Math.abs(g) < 1e-6) return finish('flat — settled');
+  if (!Number.isFinite(g) || !Number.isFinite(f0)) return finish('the slope is not a number here');
+  if (Math.abs(g) < 1e-6) return finish('', true);
   let improved = false;
   // halve the step size until f no longer goes up
   for (let k = 0; k < 40; k++) {
@@ -329,50 +452,79 @@ function stepBall() {
     }
     ball.lr /= 2;
   }
-  if (!improved) return finish('stuck (edge of the range or not a number)');
+  if (!improved) return finish('it reached the edge of the graph or a value that is not a number');
+  const from = ball.trail[ball.trail.length - 1];   // previous accepted x
   ball.step++;
   ball.trail.push(ball.x);
-  if (ball.step >= 200) return finish('stopped at 200 steps');
+  termRow();
+  if (ball.step >= 200) return finish('it hit the limit of 200 steps');
   report();
-  draw();
+  slideBall(from, ball.x);
+  ballTimer = setTimeout(stepBall, 1000 / stepsPerSecond);
 }
 
-function finish(why) {
+// Slide the drawn ball from x0 to x1 along the curve, in step with the log row.
+function slideBall(x0, x1) {
+  if (slideFrame) { cancelAnimationFrame(slideFrame); slideFrame = 0; }
+  const dur = Math.min(300, 0.6 * 1000 / stepsPerSecond);
+  if (stepsPerSecond > 10 || !(dur > 0)) { delete ball.dx; draw(); return; }
+  const b = ball;
+  let t0 = null;
+  b.dx = x0;
+  const frame = () => {
+    const now = performance.now();
+    slideFrame = 0;
+    if (ball !== b || b.done) return;
+    if (t0 === null) t0 = now;   // time the slide from its first frame
+    const t = Math.min(1, Math.max(0, (now - t0) / dur));
+    const e = 1 - (1 - t) * (1 - t);
+    if (t >= 1) delete b.dx; else b.dx = x0 + (x1 - x0) * e;
+    draw();
+    if (t < 1) slideFrame = requestAnimationFrame(frame);
+  };
+  draw();
+  slideFrame = requestAnimationFrame(frame);
+}
+
+function finish(why, settled) {
   stopBall();
-  ball.done = true; ball.why = why;
+  delete ball.dx;
+  ball.done = true; ball.why = why; ball.settled = !!settled;
+  const n = ball.step + (ball.step === 1 ? ' step' : ' steps');
+  termLine('');
+  termLine(settled
+    ? 'done: lowest point near ' + xName() + ' = ' + fmt(ball.x, 3) + ', f = ' + fmt(F(ball.x), 3) + ', after ' + n
+    : 'stopped: ' + why + ', after ' + n, 'a');
   if (raceOnLoad) { raceOnLoad = false; runRace(); }
   report();
   draw();
 }
 
-// ---------- race ----------
-function resetRace() {
-  $('bar1').style.width = '0'; $('bar2').style.width = '0';
-  $('t1').textContent = ''; $('t2').textContent = '';
-  $('speedup').textContent = '';
-}
-
-const fmtMs = (ms) => (ms < 10 ? ms.toFixed(2) : ms < 1000 ? ms.toFixed(0) : (ms / 1000).toFixed(2) + ' s') + (ms < 1000 ? ' ms' : '');
+// ---------- speed test ----------
+const fmtMs = (ms) => (ms < 10 ? ms.toFixed(1) : ms < 1000 ? ms.toFixed(0) : (ms / 1000).toFixed(2) + ' s') + (ms < 1000 ? ' ms' : '');
 
 function runRace() {
   if (!cur) return;
   raceBtn.disabled = true;
-  resetRace();
-  $('speedup').textContent = 'running…';
+  raceOut.textContent = 'Running…';
   setTimeout(() => {
+    // Always race the fixed plain-arithmetic formula, whatever is in the box.
+    const temp = api.load(RACE_FALLBACK, 2);
+    if (!temp) { raceOut.textContent = 'The speed test could not start.'; raceBtn.disabled = false; return; }
+    const r = { h: temp, f: instantiate(temp, 0), n: api.nvars(temp), vals: [0] };
     const N = 1000000;
     const xs = new Float64Array(N);
     for (let i = 0; i < N; i++) xs[i] = XMIN + (XMAX - XMIN) * ((i * 0.6180339887) % 1);
-    const others = cur.vals.slice(1);
-    const f = cur.f, n = cur.n;
-    for (let i = 0; i < n; i++) api.setVar(cur.h, i, cur.vals[i]);
+    const others = r.vals.slice(1);
+    const f = r.f, n = r.n;
+    for (let i = 0; i < n; i++) api.setVar(r.h, i, r.vals[i]);
     let sink = 0;
 
     const runWasm = () => {
       let s = 0;
       if (n <= 1) { for (let i = 0; i < N; i++) s += f(xs[i]); }
       else if (n === 2) { const y = others[0]; for (let i = 0; i < N; i++) s += f(xs[i], y); }
-      else { const a = cur.vals.slice(); for (let i = 0; i < N; i++) { a[0] = xs[i]; s += f.apply(null, a); } }
+      else { const a = r.vals.slice(); for (let i = 0; i < N; i++) { a[0] = xs[i]; s += f.apply(null, a); } }
       return s;
     };
     // The interpreter runs as one loop inside the engine: copy the inputs into
@@ -381,27 +533,22 @@ function runRace() {
       const len = arr.length;
       const ptr = api.malloc(8 * len);
       M.HEAPF64.set(arr, ptr / 8);               // read the view after malloc: memory may have grown
-      const s = api.interpSum(cur.h, 0, ptr, len);
+      const s = api.interpSum(r.h, 0, ptr, len);
       api.free_(ptr);
       return s;
     };
     const small = xs.subarray(0, 2000);
-    const runWasmSmall = () => { let s = 0; const a = cur.vals.slice(); for (let i = 0; i < small.length; i++) { a[0] = small[i]; s += f.apply(null, a); } return s; };
+    const runWasmSmall = () => { let s = 0; const a = r.vals.slice(); for (let i = 0; i < small.length; i++) { a[0] = small[i]; s += f.apply(null, a); } return s; };
     sink += runWasmSmall() + runInterp(small);   // warm up both sides
     runWasm();
     let t = performance.now(); sink += runWasm(); const tw = performance.now() - t;
     t = performance.now(); sink += runInterp(xs); const ti = performance.now() - t;
     if (sink === 0.123456) console.log(sink);    // keep the sums alive
+    api.free(temp);
 
-    const slow = Math.max(tw, ti, 1e-6);
-    $('bar1').style.width = Math.max(1, tw / slow * 100) + '%';
-    $('bar2').style.width = Math.max(1, ti / slow * 100) + '%';
-    $('t1').textContent = fmtMs(tw);
-    $('t2').textContent = fmtMs(ti);
     const x = ti / Math.max(tw, 1e-6);
-    $('speedup').textContent = x >= 1
-      ? 'The compiled version was ' + (x >= 10 ? x.toFixed(0) : x.toFixed(1)) + '× faster.'
-      : 'This time the step-by-step version won (' + (1 / x).toFixed(1) + '× faster). Try a longer formula.';
+    raceOut.textContent = 'Compiled: ' + fmtMs(tw) + ' · Step by step: ' + fmtMs(ti) + ' · ' +
+      (x >= 1 ? (x >= 10 ? x.toFixed(0) : x.toFixed(1)) + '× faster' : 'step by step was ' + (1 / x).toFixed(1) + '× faster this time');
     raceBtn.disabled = false;
   }, 30);
 }
@@ -412,11 +559,14 @@ function currentTheme() {
   if (t) return t;
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
+function syncThemeButton() { $('theme').textContent = currentTheme() === 'dark' ? 'Light mode' : 'Dark mode'; }
 $('theme').addEventListener('click', () => {
   document.documentElement.dataset.theme = currentTheme() === 'dark' ? 'light' : 'dark';
+  syncThemeButton();
   draw();
 });
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => draw());
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { syncThemeButton(); draw(); });
+syncThemeButton();
 
 // ---------- wiring ----------
 let debounce = 0;
@@ -424,31 +574,44 @@ exprEl.addEventListener('input', () => {
   clearTimeout(debounce);
   debounce = setTimeout(() => compile(exprEl.value), 150);
 });
-for (const chip of document.querySelectorAll('.chip')) {
-  chip.addEventListener('click', () => {
-    exprEl.value = chip.textContent;
+for (const ex of document.querySelectorAll('.ex')) {
+  ex.addEventListener('click', () => {
+    exprEl.value = ex.textContent;
     clearTimeout(debounce);
     compile(exprEl.value);
   });
 }
-dropBtn.addEventListener('click', dropTheBall);
+atEl.addEventListener('input', () => {
+  const v = parseFloat(atEl.value);
+  if (Number.isFinite(v)) { atX = v; renderValues(); }
+});
+function setSpeed(v) {
+  stepsPerSecond = v;
+  speedEl.value = String(v);
+  speedOut.textContent = v + (v === 1 ? ' step per second' : ' steps per second');
+}
+speedEl.addEventListener('input', () => setSpeed(parseInt(speedEl.value, 10)));
+dropBtn.addEventListener('click', findLowest);
 raceBtn.addEventListener('click', runRace);
 let resizeTimer = 0;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(draw, 80); });
 
 buildTabs();
 renderStage();
+termIdle();
 const params = new URLSearchParams(location.search);
 if (params.has('expr')) exprEl.value = params.get('expr');
 dropOnLoad = params.get('drop') === '1';
 raceOnLoad = params.get('race') === '1';
+if (params.has('speed') && Number.isFinite(parseFloat(params.get('speed')))) setSpeed(Math.min(30, Math.max(1, Math.round(parseFloat(params.get('speed'))))));
 if (params.has('x0') && Number.isFinite(parseFloat(params.get('x0')))) startX = parseFloat(params.get('x0'));
+if (params.get('open') === '1' || params.get('race') === '1' || location.hash === '#under-the-hood') hood.open = true;
 
 boot().then(() => {
   const ok = compile(exprEl.value);
-  if (ok && dropOnLoad) requestAnimationFrame(() => dropTheBall());
+  if (ok && dropOnLoad) requestAnimationFrame(() => findLowest());
   else if (ok && raceOnLoad) { raceOnLoad = false; runRace(); }
 }).catch((e) => {
-  errEl.hidden = false;
-  errEl.textContent = 'The engine could not load (engine.mjs / engine.wasm missing?): ' + (e.message || e);
+  errBox.hidden = false;
+  errMsg.textContent = 'The engine could not load (engine.mjs / engine.wasm missing?): ' + (e.message || e);
 });

@@ -4,69 +4,96 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Just-in-Time Compiler — live demo</title>
-<meta name="description" content="Type a formula. It is compiled to machine code in your browser and run instantly.">
+<title>Just-in-Time Compiler</title>
+<meta name="description" content="A compiler written in C. Type a formula: it is turned into machine code in your browser, graphed, and differentiated.">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main class="page">
   <header class="top">
-    <h1>Just-in-Time Compiler <span class="pill">live</span></h1>
-    <button id="theme" class="btn ghost" type="button" aria-label="Switch between light and dark theme">Theme</button>
-  </header>
-  <p class="lead">Type a formula. It is compiled to machine code in your browser and run instantly.</p>
-
-  <section class="card" aria-label="Formula">
-    <label class="inputrow" for="expr">
-      <span class="prompt">f(x) =</span>
-      <input id="expr" type="text" value="x^2 - 2*x + sigmoid(3*x)" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="err">
-    </label>
-    <pre id="err" class="err" role="alert" hidden></pre>
-    <div class="chips" role="group" aria-label="Example formulas">
-      <span class="try">try:</span>
-      <button type="button" class="chip">sin(x)*x</button>
-      <button type="button" class="chip">x^3 - x</button>
-      <button type="button" class="chip">tanh(2*x)</button>
-      <button type="button" class="chip">x^2 - 2*x + sigmoid(3*x)</button>
-      <button type="button" class="chip">abs(x - 1) + relu(x)</button>
+    <div class="intro">
+      <h1>Just-in-Time Compiler</h1>
+      <p class="lead">A compiler I wrote in C. Type a formula: it is turned into machine code in your browser, graphed, and differentiated.</p>
     </div>
-  </section>
+    <nav class="links" aria-label="Page links">
+      <a href="https://github.com/JohnFok119/JIT-Compiler">Source on GitHub</a>
+      <button id="theme" class="linkbtn" type="button" aria-label="Switch between light and dark theme">Dark mode</button>
+    </nav>
+  </header>
 
-  <div class="grid">
-    <section class="card" aria-label="Compiler stages">
-      <h2>What the engine does</h2>
-      <div id="tabs" class="tabs" role="tablist" aria-label="Compiler stage"></div>
-      <p id="caption" class="caption"></p>
-      <pre id="code" class="code" role="tabpanel" tabindex="0" aria-live="polite"></pre>
+  <div class="main">
+    <section class="panel" aria-label="Formula and results">
+      <label class="label" for="expr">Formula</label>
+      <input id="expr" class="field mono" type="text" value="0.5*x^2 + sin(2*x)" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="errMsg errCaret">
+      <div class="try" role="group" aria-label="Example formulas">
+        <span class="small">Try:</span>
+        <button type="button" class="linkbtn ex mono">0.5*x^2 + sin(2*x)</button>
+        <button type="button" class="linkbtn ex mono">sin(x) * x</button>
+        <button type="button" class="linkbtn ex mono">x^2 - 2*x + sigmoid(3*x)</button>
+        <button type="button" class="linkbtn ex mono">abs(x - 1) + relu(x)</button>
+        <button type="button" class="linkbtn ex mono">tanh(2*x)</button>
+      </div>
+      <div id="err" role="alert" hidden>
+        <p id="errMsg" class="errmsg"></p>
+        <pre id="errCaret" class="errcaret mono"></pre>
+      </div>
+
+      <dl class="results">
+        <div class="row">
+          <dt>Derivative</dt>
+          <dd id="deriv" class="mono"></dd>
+        </div>
+        <div class="row">
+          <dt><label for="at" id="atLabel">At x =</label></dt>
+          <dd>
+            <input id="at" class="field small-field mono" type="number" step="any" value="1">
+            <span id="fval" class="mono val"></span>
+            <span id="dval" class="mono val"></span>
+          </dd>
+        </div>
+        <div id="compiledRow" class="row">
+          <dt>Compiled</dt>
+          <dd id="compiled" class="small quiet"></dd>
+        </div>
+      </dl>
     </section>
 
-    <section class="card" aria-label="Graph and gradient descent">
-      <h2>The graph</h2>
+    <section class="plotcol" aria-label="Graph">
+      <p class="legend small">
+        <span class="key"><span class="sw solid"></span>f(x)</span>
+        <span class="key"><span class="sw dashed"></span>slope f′(x)</span>
+      </p>
       <canvas id="plot" role="img" aria-label="Graph"></canvas>
-      <div class="legend"><span class="k kf">f(x)</span><span class="k kd">slope f′(x)</span></div>
-      <div id="sliders" class="sliders"></div>
+      <div class="speed"><label for="speed" class="small quiet">Speed</label><input id="speed" type="range" min="1" max="30" step="1" value="3"><output id="speedOut" for="speed" class="small">3 steps per second</output></div>
       <div class="drop">
-        <button id="dropBtn" class="btn main" type="button">Drop the ball</button>
-        <span id="dropInfo" class="info" aria-live="polite"></span>
+        <button id="dropBtn" class="btn" type="button">Find the lowest point</button>
+        <p id="dropInfo" class="dropinfo" aria-live="polite"></p>
       </div>
-      <p class="caption">This is gradient descent — how neural networks learn: follow the slope downhill.</p>
+    </section>
+
+    <section class="termcol" aria-label="Descent log">
+      <p class="small quiet">Descent log</p>
+      <pre id="term" class="term" role="log" aria-live="off" tabindex="0"></pre>
     </section>
   </div>
 
-  <section class="card" aria-label="Speed race">
-    <h2>Race</h2>
-    <button id="raceBtn" class="btn main" type="button">Run 1,000,000 evaluations</button>
-    <div id="race" class="race" aria-live="polite">
-      <div class="row"><span class="rl">compiled</span><span class="track"><span id="bar1" class="fill c"></span></span><span id="t1" class="rt"></span></div>
-      <div class="row"><span class="rl">step-by-step</span><span class="track"><span id="bar2" class="fill i"></span></span><span id="t2" class="rt"></span></div>
-      <p id="speedup" class="speedup"></p>
-    </div>
-    <p class="caption">Both run inside your browser. The compiled version is a WebAssembly module generated for this exact formula. The interpreter runs as one loop inside the engine; the compiled version is called once per value from JavaScript.</p>
-  </section>
+  <details id="under-the-hood" class="hood">
+    <summary>Under the hood</summary>
+    <p class="body">The engine reads the formula, builds a tree, simplifies it without changing any result, then writes machine code. The browser can't run x86-64, so it runs the WebAssembly version.</p>
+    <div id="tabs" class="tabs" role="tablist" aria-label="Compiler stage"></div>
+    <p id="caption" class="small quiet body"></p>
+    <pre id="code" class="code mono" role="tabpanel" tabindex="0" aria-live="polite"></pre>
 
-  <footer class="foot">
-    <a href="https://github.com/JohnFok119/JIT-Compiler">Source on GitHub</a>
-    <span>Started as a UC Irvine CS 238P assignment.</span>
+    <h2>Speed test on a plain-arithmetic formula: <span class="mono">((3*x - 2)*x + 5)*x - 1</span></h2>
+    <div class="drop">
+      <button id="raceBtn" class="btn" type="button">Run 1,000,000 evaluations</button>
+      <p id="raceOut" class="dropinfo" aria-live="polite"></p>
+    </div>
+    <p class="small quiet body">Both run in your browser. Built-in functions like sin and exp run in JavaScript for both, so formulas made of them gain less. On a laptop processor, the native compiler is 14–21× faster on plain arithmetic.</p>
+  </details>
+
+  <footer class="foot small quiet">
+    <span>Started as a UC Irvine CS 238P assignment · <a href="https://github.com/JohnFok119/JIT-Compiler">Source on GitHub</a></span>
   </footer>
 </main>
 <script type="module" src="app.js"></script>
