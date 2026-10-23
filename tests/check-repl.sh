@@ -68,7 +68,7 @@ jit> (mul
 6
 jit> emit off
 jit> 6
-jit> error: usage: :emit tokens|ast|ir|infix|asm|hex|c
+jit> error: usage: :emit tokens|ast|ir|infix|asm|hex|c|wasm
 jit> error: unknown command (try :q or :emit STAGE)
 jit> "
 

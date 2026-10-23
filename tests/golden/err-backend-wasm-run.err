@@ -1,0 +1,1 @@
+error: wasm backend: use --emit wasm (the value is computed in the browser)

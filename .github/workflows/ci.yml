@@ -19,4 +19,10 @@ jobs:
       - name: Long differential fuzz run
         run: make fuzz
 
-  # wasm:  (added in C9)
+  wasm:
+    runs-on: ubuntu-latest
+    container: emscripten/emsdk:3.1.74
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the engine for the browser and smoke-test it in Node
+        run: make wasm && node web/test/smoke.mjs

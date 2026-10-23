@@ -37,10 +37,11 @@ jit_expr *jit_diff(const jit_expr *, const char *var, struct jit_error *err);
 typedef struct jit_fn jit_fn;
 typedef double (*jit_native)(const double *vars);
 jit_fn   *jit_compile(const jit_expr *, enum jit_backend, struct jit_error *err); /* NULL on error, err->pos = -1 */
+/* A JIT_WASM jit_fn only holds module bytes for a wasm engine: jit_call on it returns NaN. */
 double    jit_call(const jit_fn *, const double *vars);
 jit_native jit_entry(const jit_fn *);          /* raw pointer for tight loops (benchmarks); NULL for JIT_INTERP */
 void      jit_fn_free(jit_fn *);
-int       jit_fn_dump(const jit_fn *, const char *stage, FILE *out);   /* "asm" | "hex" (x86) | "c" (gcc); 0 ok, -1 unknown stage */
+int       jit_fn_dump(const jit_fn *, const char *stage, FILE *out);   /* "asm" | "hex" (x86) | "c" (gcc) | "wasm" (JIT_WASM: hex, 16 bytes per line, section names as comments); 0 ok, -1 unknown stage */
 size_t    jit_fn_code_size(const jit_fn *);    /* bytes mapped (code + constant pool); 0 for JIT_INTERP */
 
 #endif /* JIT_H */

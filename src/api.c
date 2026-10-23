@@ -3,15 +3,36 @@
 #include <stdlib.h>
 #include <string.h>
 #include "api.h"
-#include "backend/gcc/loader.h"
+#include <math.h>
+#include "backend/wasm/emit.h"
 #include "backend/x86_64/emit.h"
 #include "front/parser.h"
+#ifndef __EMSCRIPTEN__
+#include "backend/gcc/loader.h"
+#else
+/* The browser build has no gcc: the backend is a stub that refuses to compile. */
+struct gcc_code { void *fn; };
+static int
+gcc_compile(const struct ir *ir, struct gcc_code *c, struct jit_error *err)
+{
+	(void)ir;
+	(void)c;
+	err->pos = -1;
+	snprintf(err->msg, sizeof (err->msg), "gcc backend is not available here");
+	return -1;
+}
+static double gcc_call(const struct gcc_code *c, const double *v) { (void)c; (void)v; return NAN; }
+static void   gcc_code_free(struct gcc_code *c) { (void)c; }
+static int    gcc_dump(const struct gcc_code *c, const char *s, FILE *o) { (void)c; (void)s; (void)o; return -1; }
+#endif
 
 struct jit_fn {
 	enum jit_backend backend;
 	struct ir ir;             /* JIT_INTERP: snapshot of the nodes */
 	struct x86_code x86;      /* JIT_X86 */
 	struct gcc_code gcc;      /* JIT_GCC */
+	unsigned char *wasm;      /* JIT_WASM: the module bytes (jit_call returns NaN) */
+	size_t wasm_len;
 };
 
 static jit_expr *
@@ -128,11 +149,8 @@ jit_compile(const jit_expr *e, enum jit_backend backend, struct jit_error *err)
 {
 	jit_fn *fn;
 
-	if (JIT_WASM == backend) {
-		return compile_error(NULL, err,
-				     "wasm backend arrives in a later version");
-	}
-	if (JIT_INTERP != backend && JIT_X86 != backend && JIT_GCC != backend) {
+	if (JIT_INTERP != backend && JIT_X86 != backend && JIT_GCC != backend &&
+	    JIT_WASM != backend) {
 		return compile_error(NULL, err, "unknown backend");
 	}
 	if (!(fn = calloc(1, sizeof (*fn)))) {
@@ -142,6 +160,13 @@ jit_compile(const jit_expr *e, enum jit_backend backend, struct jit_error *err)
 	ir_init(&fn->ir);
 	if (JIT_X86 == backend) {
 		if (x86_compile(&e->ir, &fn->x86, err)) {
+			jit_fn_free(fn);
+			return NULL;
+		}
+		return fn;
+	}
+	if (JIT_WASM == backend) {
+		if (wasm_emit(&e->ir, &fn->wasm, &fn->wasm_len, err)) {
 			jit_fn_free(fn);
 			return NULL;
 		}
@@ -197,6 +222,9 @@ jit_call(const jit_fn *fn, const double *vars)
 	if (JIT_GCC == fn->backend) {
 		return gcc_call(&fn->gcc, vars);
 	}
+	if (JIT_WASM == fn->backend) {
+		return NAN;     /* wasm bytes are run by a wasm engine, not here */
+	}
 	return ir_interp(&fn->ir, vars);
 }
 
@@ -207,6 +235,7 @@ jit_fn_free(jit_fn *fn)
 		ir_free(&fn->ir);
 		x86_code_free(&fn->x86);
 		gcc_code_free(&fn->gcc);
+		free(fn->wasm);
 		free(fn);
 	}
 }
@@ -219,6 +248,9 @@ jit_fn_dump(const jit_fn *fn, const char *stage, FILE *out)
 	}
 	if (JIT_GCC == fn->backend) {
 		return gcc_dump(&fn->gcc, stage, out);
+	}
+	if (JIT_WASM == fn->backend) {
+		return wasm_dump(fn->wasm, fn->wasm_len, stage, out);
 	}
 	return -1;
 }

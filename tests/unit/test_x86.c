@@ -378,8 +378,9 @@ check_api(void)
 	jit_free(e);
 
 	e = jit_parse("x", 0, &err);
-	CHECK(NULL == jit_compile(e, JIT_WASM, &err));
-	CHECK_STR(err.msg, "wasm backend arrives in a later version");
+	fi = jit_compile(e, JIT_WASM, &err);        /* the wasm backend exists since C9 */
+	CHECK(NULL != fi);
+	jit_fn_free(fi);
 	jit_free(e);
 }
 

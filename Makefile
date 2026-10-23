@@ -12,7 +12,8 @@ CFLAGS = -std=c11 -pedantic -Wall -Wextra -Werror -O2 -ffp-contract=off -D_GNU_S
 LDLIBS = -lm -ldl
 BUILD  = build
 BIN    = $(BUILD)/jit
-SRCS  := $(shell find src -name '*.c')
+# src/web is the Emscripten build only (make wasm)
+SRCS  := $(filter-out src/web/%,$(shell find src -name '*.c'))
 OBJS  := $(SRCS:%.c=$(BUILD)/%.o)
 
 all: $(BIN)
@@ -102,3 +103,33 @@ bench: all
 	@bash bench/run.sh
 
 .PHONY: bench
+
+# WebAssembly build of the whole engine (web/dist/engine.mjs + engine.wasm).
+# emcc runs in the pinned emscripten/emsdk image (docker CLI; works from WSL).
+# Inside that image emcc is on the PATH and is used directly. From PowerShell:
+#   docker run --rm -v "${PWD}:/src" -w /src emscripten/emsdk:3.1.74 make wasm
+EMSDK_TAG  = 3.1.74
+EMCC      ?= $(if $(shell command -v emcc 2>/dev/null),emcc,docker run --rm -v "$(CURDIR)":/src -w /src emscripten/emsdk:$(EMSDK_TAG) emcc)
+WASM_SRCS := $(filter-out src/cli/main.c src/backend/gcc/%,$(shell find src -name '*.c'))
+WASM_EXPORTS = _jitw_load,_jitw_error_json,_jitw_stage,_jitw_nvars,_jitw_var_name,_jitw_wasm,_jitw_wasm_len,_jitw_set_var,_jitw_interp,_jitw_interp_sum,_jitw_free,_malloc,_free
+
+wasm:
+	@mkdir -p web/dist
+	$(EMCC) -std=c11 -Wall -Wextra -O2 -ffp-contract=off -D_GNU_SOURCE -Isrc -Iinclude \
+		$(WASM_SRCS) -o web/dist/engine.mjs --no-entry \
+		-sMODULARIZE=1 -sEXPORT_ES6=1 -sENVIRONMENT=web,node -sALLOW_MEMORY_GROWTH=1 \
+		-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,HEAPU8,HEAPF64 -sFILESYSTEM=0 \
+		-sEXPORTED_FUNCTIONS=$(WASM_EXPORTS)
+
+.PHONY: wasm
+
+# The folder that ships: the page, fonts, shared imports and the make wasm outputs.
+web: web/dist/engine.mjs web/dist/engine.wasm
+	@rm -rf web/site
+	@mkdir -p web/site
+	@cp web/index.html web/app.js web/style.css web/imports.mjs web/site/
+	@cp -r web/fonts web/site/fonts
+	@cp web/dist/engine.mjs web/dist/engine.wasm web/site/
+	@du -sh web/site
+
+.PHONY: web

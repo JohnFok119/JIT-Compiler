@@ -208,7 +208,9 @@ callee(enum ir_op op, const char **name)
 	fn2 f2 = NULL;
 	uint64_t u = 0;
 
+#ifndef __EMSCRIPTEN__      /* the browser build only encodes, it never runs the code */
 	_Static_assert(sizeof (fn1) == sizeof (uint64_t), "64-bit pointers");
+#endif
 	switch (op) {
 	case IR_SIN:     f1 = sin;            *name = "sin";            break;
 	case IR_COS:     f1 = cos;            *name = "cos";            break;
@@ -221,10 +223,10 @@ callee(enum ir_op op, const char **name)
 	default:         *name = "?";                                   break;
 	}
 	if (f1) {
-		memcpy(&u, &f1, sizeof (u));
+		memcpy(&u, &f1, sizeof (f1));
 	}
 	else if (f2) {
-		memcpy(&u, &f2, sizeof (u));
+		memcpy(&u, &f2, sizeof (f2));
 	}
 	return u;
 }

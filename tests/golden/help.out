@@ -1,15 +1,18 @@
-usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|infix|asm|hex|c] [--diff VAR] [--backend interp|x86|gcc] [--bench [N]] [--help] [--version] '<expr>' [name=value ...]
+usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|infix|asm|hex|c|wasm] [--diff VAR] [--backend interp|x86|gcc|wasm] [--bench [N]] [--help] [--version] '<expr>' [name=value ...]
 
 With no expression on a terminal, jit starts an interactive prompt.
 
 options (one example each):
-  --backend interp|x86|gcc   how the expression runs (default x86; gcc with --legacy)
+  --backend interp|x86|gcc|wasm  how the expression runs (default x86; gcc with --legacy;
+                             wasm only emits a module: use --emit wasm)
       jit --backend gcc 'sin(x) * 2' x=0.5
   -O0 | -O2                  optimizer level (default -O2)
       jit -O0 '2 * 3 + x' x=1
   --emit STAGE               print a stage instead of running; STAGE is
-                             tokens, ast, ir, infix, asm, hex (x86 backend) or c (gcc backend)
+                             tokens, ast, ir, infix, asm, hex (x86 backend), c (gcc backend)
+                             or wasm (a WebAssembly module, hex)
       jit --emit ir 'x * 1 + 0'
+      jit --emit wasm 'x + 1'
   --diff VAR                 differentiate by VAR: prints the derivative as an expression
                              (or its value, given name=value); kinks show as step(...),
                              which is printed but not parseable

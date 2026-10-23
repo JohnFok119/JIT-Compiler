@@ -11,8 +11,8 @@
 #include "cli/bench.h"
 
 #define USAGE \
-	"usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|infix|asm|hex|c] " \
-	"[--diff VAR] [--backend interp|x86|gcc] [--bench [N]] [--help] [--version] " \
+	"usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|infix|asm|hex|c|wasm] " \
+	"[--diff VAR] [--backend interp|x86|gcc|wasm] [--bench [N]] [--help] [--version] " \
 	"'<expr>' [name=value ...]"
 
 #define MAX_LINE 4096
@@ -42,13 +42,16 @@ help(void)
 	       "With no expression on a terminal, jit starts an interactive prompt.\n"
 	       "\n"
 	       "options (one example each):\n"
-	       "  --backend interp|x86|gcc   how the expression runs (default x86; gcc with --legacy)\n"
+	       "  --backend interp|x86|gcc|wasm  how the expression runs (default x86; gcc with --legacy;\n"
+	       "                             wasm only emits a module: use --emit wasm)\n"
 	       "      jit --backend gcc 'sin(x) * 2' x=0.5\n"
 	       "  -O0 | -O2                  optimizer level (default -O2)\n"
 	       "      jit -O0 '2 * 3 + x' x=1\n"
 	       "  --emit STAGE               print a stage instead of running; STAGE is\n"
-	       "                             tokens, ast, ir, infix, asm, hex (x86 backend) or c (gcc backend)\n"
+	       "                             tokens, ast, ir, infix, asm, hex (x86 backend), c (gcc backend)\n"
+	       "                             or wasm (a WebAssembly module, hex)\n"
 	       "      jit --emit ir 'x * 1 + 0'\n"
+	       "      jit --emit wasm 'x + 1'\n"
 	       "  --diff VAR                 differentiate by VAR: prints the derivative as an expression\n"
 	       "                             (or its value, given name=value); kinks show as step(...),\n"
 	       "                             which is printed but not parseable\n"
@@ -189,7 +192,7 @@ evaluate_expr(const struct opts *o, const char *src, const char **bind,
 	}
 	/* asm / hex / c dump the compiled code, so they go through jit_compile */
 	code_emit = emit && (!strcmp(emit, "asm") || !strcmp(emit, "hex") ||
-			     !strcmp(emit, "c"));
+			     !strcmp(emit, "c") || !strcmp(emit, "wasm"));
 	if (emit && !code_emit) {
 		if (!strcmp(emit, "infix") && opt && jit_display_form(e)) {
 			errorf("out of memory");
@@ -210,7 +213,8 @@ evaluate_expr(const struct opts *o, const char *src, const char **bind,
 		}
 	}
 
-	for (k = 0; k < jit_nvars(e) && (!code_emit || repl); ++k) {
+	for (k = 0; k < jit_nvars(e) &&
+	     (!code_emit || (repl && strcmp(emit, "wasm"))); ++k) {
 		if (!have[k]) {
 			errorf("no value for variable '%s'", jit_var_name(e, k));
 			goto done;
@@ -223,7 +227,8 @@ evaluate_expr(const struct opts *o, const char *src, const char **bind,
 	}
 
 	if (0 > backend) {
-		backend = legacy ? JIT_GCC : JIT_X86;
+		backend = legacy ? JIT_GCC :
+			  emit && !strcmp(emit, "wasm") ? JIT_WASM : JIT_X86;
 	}
 	if (legacy && (JIT_X86 == backend || JIT_WASM == backend)) {
 		errorf("legacy mode needs --backend gcc or interp");
@@ -236,13 +241,18 @@ evaluate_expr(const struct opts *o, const char *src, const char **bind,
 	if (code_emit) {
 		if (jit_fn_dump(fn, emit, stdout)) {
 			errorf("--emit %s needs --backend %s", emit,
-			       strcmp(emit, "c") ? "x86" : "gcc");
+			       !strcmp(emit, "c") ? "gcc" :
+			       !strcmp(emit, "wasm") ? "wasm" : "x86");
 			goto done;
 		}
-		if (!repl) {
+		if (!repl || JIT_WASM == backend) {
 			status = 0;
 			goto done;
 		}
+	}
+	if (JIT_WASM == backend) {
+		errorf("wasm backend: use --emit wasm (the value is computed in the browser)");
+		goto done;
 	}
 	{
 		double result = jit_call(fn, vals);
@@ -346,8 +356,9 @@ repl(struct opts o)
 			if (strcmp(want, "tokens") && strcmp(want, "ast") &&
 			    strcmp(want, "ir") && strcmp(want, "infix") &&
 			    strcmp(want, "asm") &&
-			    strcmp(want, "hex") && strcmp(want, "c")) {
-				errorf("usage: :emit tokens|ast|ir|infix|asm|hex|c");
+			    strcmp(want, "hex") && strcmp(want, "c") &&
+			    strcmp(want, "wasm")) {
+				errorf("usage: :emit tokens|ast|ir|infix|asm|hex|c|wasm");
 			}
 			else if (!strcmp(stage, want)) {
 				stage[0] = '\0';
@@ -405,7 +416,8 @@ main(int argc, char *argv[])
 			     strcmp(argv[i + 1], "infix") &&
 			     strcmp(argv[i + 1], "asm") &&
 			     strcmp(argv[i + 1], "hex") &&
-			     strcmp(argv[i + 1], "c"))) {
+			     strcmp(argv[i + 1], "c") &&
+			     strcmp(argv[i + 1], "wasm"))) {
 				return usage();
 			}
 			o.emit = argv[i + 1];
