@@ -1,0 +1,11 @@
+#include <math.h>
+double evaluate(const double *v) {
+double t0 = v[0];
+double t1 = (t0 > 0.0) ? t0 : 0.0;
+double t2 = v[1];
+double t3 = (t0 < t2) ? t0 : t2;
+double t4 = t1 - t3;
+double t5 = (t0 > t2) ? t0 : t2;
+double t6 = t4 + t5;
+return t6;
+}

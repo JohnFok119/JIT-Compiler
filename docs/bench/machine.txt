@@ -1,0 +1,5 @@
+cpu: Intel(R) Core(TM) i9-10885H CPU @ 2.40GHz
+gcc: gcc (Ubuntu 9.4.0-1ubuntu1~20.04.1) 9.4.0
+kernel: Linux 6.18.54.1-microsoft-standard-WSL2
+pinned: taskset -c 2
+evaluations per run: 1000000

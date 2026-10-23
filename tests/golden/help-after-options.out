@@ -1,0 +1,32 @@
+usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|infix|asm|hex|c|wasm] [--diff VAR] [--backend interp|x86|gcc|wasm] [--bench [N]] [--help] [--version] '<expr>' [name=value ...]
+
+With no expression on a terminal, jit starts an interactive prompt.
+
+options (one example each):
+  --backend interp|x86|gcc|wasm  how the expression runs (default x86; gcc with --legacy;
+                             wasm only emits a module: use --emit wasm)
+      jit --backend gcc 'sin(x) * 2' x=0.5
+  -O0 | -O2                  optimizer level (default -O2)
+      jit -O0 '2 * 3 + x' x=1
+  --emit STAGE               print a stage instead of running; STAGE is
+                             tokens, ast, ir, infix, asm, hex (x86 backend), c (gcc backend)
+                             or wasm (a WebAssembly module, hex)
+      jit --emit ir 'x * 1 + 0'
+      jit --emit wasm 'x + 1'
+  --diff VAR                 differentiate by VAR: prints the derivative as an expression
+                             (or its value, given name=value); kinks show as step(...),
+                             which is printed but not parseable
+      jit --diff x 'x^3 + sin(x)*x'
+      jit --diff x 'sigmoid(3*x)' x=0.2
+      jit --backend gcc --emit c 'sigmoid(x) * 2'
+  --bench [N]                time compile + N evaluations (default 1000000) on every
+                             backend: interp, x86 -O0, x86 -O2, gcc
+      jit --bench 100000 'sin(x) * 2'
+  --legacy                   the original assignment: sigmoid of the result, x/0 = 0
+      jit --legacy '10 / 4'
+  --help                     show this text
+      jit --help
+  --version                  show the version
+      jit --version
+
+prompt commands: :q quits, :emit STAGE turns a stage dump on or off

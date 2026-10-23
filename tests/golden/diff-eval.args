@@ -1,0 +1,4 @@
+--diff
+x
+sigmoid(3*x)
+x=0.2

@@ -1,0 +1,3 @@
+error: name too long (max 31 characters)
+  x+abcdefghijabcdefghijabcdefghijab
+    ^

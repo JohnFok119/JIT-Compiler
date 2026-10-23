@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Just-in-Time Compiler — live demo</title>
+<meta name="description" content="Type a formula. It is compiled to machine code in your browser and run instantly.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="page">
+  <header class="top">
+    <h1>Just-in-Time Compiler <span class="pill">live</span></h1>
+    <button id="theme" class="btn ghost" type="button" aria-label="Switch between light and dark theme">Theme</button>
+  </header>
+  <p class="lead">Type a formula. It is compiled to machine code in your browser and run instantly.</p>
+
+  <section class="card" aria-label="Formula">
+    <label class="inputrow" for="expr">
+      <span class="prompt">f(x) =</span>
+      <input id="expr" type="text" value="x^2 - 2*x + sigmoid(3*x)" spellcheck="false" autocomplete="off" autocapitalize="off" aria-describedby="err">
+    </label>
+    <pre id="err" class="err" role="alert" hidden></pre>
+    <div class="chips" role="group" aria-label="Example formulas">
+      <span class="try">try:</span>
+      <button type="button" class="chip">sin(x)*x</button>
+      <button type="button" class="chip">x^3 - x</button>
+      <button type="button" class="chip">tanh(2*x)</button>
+      <button type="button" class="chip">x^2 - 2*x + sigmoid(3*x)</button>
+      <button type="button" class="chip">abs(x - 1) + relu(x)</button>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="card" aria-label="Compiler stages">
+      <h2>What the engine does</h2>
+      <div id="tabs" class="tabs" role="tablist" aria-label="Compiler stage"></div>
+      <p id="caption" class="caption"></p>
+      <pre id="code" class="code" role="tabpanel" tabindex="0" aria-live="polite"></pre>
+    </section>
+
+    <section class="card" aria-label="Graph and gradient descent">
+      <h2>The graph</h2>
+      <canvas id="plot" role="img" aria-label="Graph"></canvas>
+      <div class="legend"><span class="k kf">f(x)</span><span class="k kd">slope f′(x)</span></div>
+      <div id="sliders" class="sliders"></div>
+      <div class="drop">
+        <button id="dropBtn" class="btn main" type="button">Drop the ball</button>
+        <span id="dropInfo" class="info" aria-live="polite"></span>
+      </div>
+      <p class="caption">This is gradient descent — how neural networks learn: follow the slope downhill.</p>
+    </section>
+  </div>
+
+  <section class="card" aria-label="Speed race">
+    <h2>Race</h2>
+    <button id="raceBtn" class="btn main" type="button">Run 1,000,000 evaluations</button>
+    <div id="race" class="race" aria-live="polite">
+      <div class="row"><span class="rl">compiled</span><span class="track"><span id="bar1" class="fill c"></span></span><span id="t1" class="rt"></span></div>
+      <div class="row"><span class="rl">step-by-step</span><span class="track"><span id="bar2" class="fill i"></span></span><span id="t2" class="rt"></span></div>
+      <p id="speedup" class="speedup"></p>
+    </div>
+    <p class="caption">Both run inside your browser. The compiled version is a WebAssembly module generated for this exact formula. The interpreter runs as one loop inside the engine; the compiled version is called once per value from JavaScript.</p>
+  </section>
+
+  <footer class="foot">
+    <a href="https://github.com/JohnFok119/JIT-Compiler">Source on GitHub</a>
+    <span>Started as a UC Irvine CS 238P assignment.</span>
+  </footer>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

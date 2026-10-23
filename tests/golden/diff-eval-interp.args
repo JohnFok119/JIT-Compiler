@@ -1,0 +1,6 @@
+--backend
+interp
+--diff
+x
+abs(x)*x
+x=-2

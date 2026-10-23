@@ -1,0 +1,28 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, check, sanitizers
+        run: make -j2 && make check && make asan
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Long differential fuzz run
+        run: make fuzz
+
+  wasm:
+    runs-on: ubuntu-latest
+    container: emscripten/emsdk:3.1.74
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the engine for the browser and smoke-test it in Node
+        run: make wasm && node web/test/smoke.mjs

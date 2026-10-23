@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 360" width="960" height="360" role="img" aria-labelledby="pt">
+  <title id="pt">Pipeline: text, lexer, parser, IR, optimizer (plus derivative), then four backends</title>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5b5a6b"/></marker>
+    <style>
+      text { font-family: "IBM Plex Mono", "DejaVu Sans Mono", Consolas, monospace; text-anchor: middle; }
+      .t { font-size: 15px; font-weight: 600; fill: #1b1b25; }
+      .s { font-size: 12px; fill: #5b5a6b; }
+      .e { fill: none; stroke: #5b5a6b; stroke-width: 2; }
+      .d { stroke-dasharray: 5 4; }
+      .grey { fill: #ffffff; stroke: #5b5a6b; stroke-width: 2; }
+      .navy { fill: #e8eaf6; stroke: #1f2a6b; stroke-width: 2.5; }
+      .gold { fill: #f7edcf; stroke: #c9a449; stroke-width: 3; }
+      .red { fill: #f8e4e5; stroke: #b8262c; stroke-width: 2.5; }
+    </style>
+  </defs>
+  <rect x="0" y="0" width="960" height="360" rx="14" fill="#f7f6f2" stroke="#d9d7cc"/>
+  <rect x="10" y="40" width="130" height="64" rx="8" class="grey"/><text x="75" y="68" class="t">"sin(x)*2"</text><text x="75" y="88" class="s">source text</text>
+  <rect x="170" y="40" width="130" height="64" rx="8" class="grey"/><text x="235" y="68" class="t">Lexer</text><text x="235" y="88" class="s">tokens + positions</text>
+  <rect x="330" y="40" width="130" height="64" rx="8" class="grey"/><text x="395" y="68" class="t">Parser</text><text x="395" y="88" class="s">AST, caret errors</text>
+  <rect x="490" y="40" width="130" height="64" rx="8" class="navy"/><text x="555" y="68" class="t">SSA IR</text><text x="555" y="88" class="s">hash-consed</text>
+  <rect x="650" y="40" width="130" height="64" rx="8" class="navy"/><text x="715" y="68" class="t">Optimizer</text><text x="715" y="88" class="s">bit-identical rules</text>
+  <rect x="650" y="140" width="130" height="50" rx="8" class="navy d"/><text x="715" y="170" class="s">+ derivative d/dx</text>
+  <path d="M140,72 H168" class="e" marker-end="url(#ar)"/><path d="M300,72 H328" class="e" marker-end="url(#ar)"/><path d="M460,72 H488" class="e" marker-end="url(#ar)"/><path d="M620,72 H648" class="e" marker-end="url(#ar)"/>
+  <path d="M715,104 V138" class="e d" marker-end="url(#ar)"/>
+  <path d="M780,72 H850 V240 H100" class="e"/>
+  <path d="M100,240 V272" class="e" marker-end="url(#ar)"/><path d="M330,240 V272" class="e" marker-end="url(#ar)"/><path d="M570,240 V272" class="e" marker-end="url(#ar)"/><path d="M820,240 V272" class="e" marker-end="url(#ar)"/>
+  <rect x="20" y="274" width="160" height="58" rx="8" class="navy"/><text x="100" y="298" class="t">Interpreter</text><text x="100" y="318" class="s">reference answer</text>
+  <rect x="250" y="274" width="160" height="58" rx="8" class="gold"/><text x="330" y="298" class="t">x86-64</text><text x="330" y="318" class="s">bytes, mmap, W^X</text>
+  <rect x="490" y="274" width="160" height="58" rx="8" class="navy"/><text x="570" y="298" class="t">WebAssembly</text><text x="570" y="318" class="s">runs in a browser</text>
+  <rect x="740" y="274" width="160" height="58" rx="8" class="red"/><text x="820" y="298" class="t">GCC</text><text x="820" y="318" class="s">fork, execv, dlopen</text>
+</svg>

@@ -1,0 +1,5 @@
+--emit
+ast
+--diff
+x
+x+1

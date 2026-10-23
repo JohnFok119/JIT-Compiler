@@ -1,0 +1,12 @@
+; header (magic, version)
+00 61 73 6d 01 00 00 00
+; type section
+01 11 03 60 01 7c 01 7c 60 01 7c 01 7c 60 02 7c
+7c 01 7c
+; function section
+03 02 01 00
+; export section
+07 05 01 01 66 00 00
+; code section
+0a 1e 01 1c 01 03 7c 20 00 21 01 44 00 00 00 00
+00 00 f0 3f 21 02 20 01 20 02 a0 21 03 20 03 0b

@@ -1,0 +1,1 @@
+usage: jit [--legacy] [-O0|-O2] [--emit tokens|ast|ir|infix|asm|hex|c|wasm] [--diff VAR] [--backend interp|x86|gcc|wasm] [--bench [N]] [--help] [--version] '<expr>' [name=value ...]

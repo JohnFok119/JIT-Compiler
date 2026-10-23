@@ -1,0 +1,47 @@
+/* Public API of the JIT expression engine. */
+
+#ifndef JIT_H
+#define JIT_H
+
+#include <stdio.h>
+
+#define JIT_MAX_VARS 8
+
+typedef struct jit_expr jit_expr;
+
+struct jit_error {
+	int pos;       /* 0-based byte offset in the source; -1 = no position */
+	char msg[128];
+};
+
+enum jit_backend { JIT_INTERP, JIT_X86, JIT_GCC, JIT_WASM };
+
+/* Parses src (legacy != 0: original assignment semantics). NULL on error. */
+jit_expr   *jit_parse(const char *src, int legacy, struct jit_error *err);
+void        jit_free(jit_expr *);
+int         jit_nvars(const jit_expr *);
+const char *jit_var_name(const jit_expr *, int i);
+double      jit_interp(const jit_expr *, const double *vars);
+/* level 0: nothing; 2: all optimizer passes (no-op on legacy expressions). 0 ok, -1 bad level or out of memory (expression unchanged). */
+int         jit_optimize(jit_expr *, int level);
+/* Display form for printing: constant folding and the x*1, x/1, x-0, --x, x+(-0) identities only; keeps pow, x*2 and x/2^k as written. Same return values as jit_optimize. */
+int         jit_display_form(jit_expr *);
+/* stage: "tokens" | "ast" | "ir" | "infix"; 0 ok, -1 unknown stage (or tokens/ast of a derivative) */
+int         jit_dump(const jit_expr *, const char *stage, FILE *out);
+
+/* d(expr)/d(var), built with the zero/one rules (0 terms dropped, factors of 1 omitted) and returned in display form (jit_display_form); run jit_optimize(.., 2) before compiling for speed. Same variable table. An unknown var gives the constant 0. NULL on error (legacy expression, out of memory). The result may contain the internal step() op, so its infix text is not always parseable. */
+jit_expr *jit_diff(const jit_expr *, const char *var, struct jit_error *err);
+
+/* Compiled functions. jit_compile takes a snapshot: the jit_fn stays valid
+ * after jit_free(expr). */
+typedef struct jit_fn jit_fn;
+typedef double (*jit_native)(const double *vars);
+jit_fn   *jit_compile(const jit_expr *, enum jit_backend, struct jit_error *err); /* NULL on error, err->pos = -1 */
+/* A JIT_WASM jit_fn only holds module bytes for a wasm engine: jit_call on it returns NaN. */
+double    jit_call(const jit_fn *, const double *vars);
+jit_native jit_entry(const jit_fn *);          /* raw pointer for tight loops (benchmarks); NULL for JIT_INTERP */
+void      jit_fn_free(jit_fn *);
+int       jit_fn_dump(const jit_fn *, const char *stage, FILE *out);   /* "asm" | "hex" (x86) | "c" (gcc) | "wasm" (JIT_WASM: hex, 16 bytes per line, section names as comments); 0 ok, -1 unknown stage */
+size_t    jit_fn_code_size(const jit_fn *);    /* bytes mapped (code + constant pool); 0 for JIT_INTERP */
+
+#endif /* JIT_H */

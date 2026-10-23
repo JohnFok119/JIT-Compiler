@@ -1,0 +1,4 @@
+%0 = var x
+%1 = const 2
+%2 = mul %0, %1
+ret %2

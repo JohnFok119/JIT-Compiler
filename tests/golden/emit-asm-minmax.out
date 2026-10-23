@@ -1,0 +1,20 @@
+0000  55                             push rbp
+0001  48 89 e5                       mov rbp,rsp
+0004  53                             push rbx
+0005  48 81 ec 08 00 00 00           sub rsp,0x8
+000c  48 89 fb                       mov rbx,rdi
+000f  f2 0f 10 83 00 00 00 00        movsd xmm0,QWORD PTR [rbx+0x0]  ; %0
+0017  f2 0f 51 c0                    sqrtsd xmm0,xmm0  ; %1
+001b  f2 0f 10 8b 08 00 00 00        movsd xmm1,QWORD PTR [rbx+0x8]  ; %2
+0023  f2 0f 5f 0d 25 00 00 00        maxsd xmm1,QWORD PTR [rip+c0]  ; %4
+002b  f2 0f 5e c1                    divsd xmm0,xmm1  ; %5
+002f  f2 0f 10 8b 00 00 00 00        movsd xmm1,QWORD PTR [rbx+0x0]  ; %0
+0037  f2 0f 5d 0d 21 00 00 00        minsd xmm1,QWORD PTR [rip+c1]  ; %7
+003f  f2 0f 5c c1                    subsd xmm0,xmm1  ; %8
+0043  48 81 c4 08 00 00 00           add rsp,0x8
+004a  5b                             pop rbx
+004b  5d                             pop rbp
+004c  c3                             ret
+; constant pool
+0050  c0   00 00 00 00 00 00 e0 3f 00 00 00 00 00 00 00 00  ; 0.5
+0060  c1   00 00 00 00 00 00 00 40 00 00 00 00 00 00 00 00  ; 2

@@ -1,0 +1,10 @@
+(sub
+  (neg
+    (pow
+      (var x)
+      (num 2)))
+  (div
+    (call pow
+      (const pi)
+      (num 0.5))
+    (num 4)))

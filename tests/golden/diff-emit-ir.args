@@ -1,0 +1,5 @@
+--emit
+ir
+--diff
+x
+sin(x)*x

@@ -1,0 +1,9 @@
+0 number 1.5e3
+6 op +
+8 name sin
+11 lparen (
+12 name x
+13 rparen )
+14 op ^
+15 number 2
+16 end

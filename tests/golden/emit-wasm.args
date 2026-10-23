@@ -1,0 +1,3 @@
+--emit
+wasm
+x+1

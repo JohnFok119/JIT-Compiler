@@ -1,0 +1,15 @@
+build/
+*.o
+*.d
+*.so
+out.c
+/jit
+/cs238
+web/dist/
+.lavish/
+node_modules/
+*.tmp
+.vscode/
+.DS_Store
+build-asan/
+web/site/

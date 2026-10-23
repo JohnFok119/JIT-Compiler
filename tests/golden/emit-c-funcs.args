@@ -1,0 +1,5 @@
+--backend
+gcc
+--emit
+c
+sin(x)+cos(x)*tan(x)-exp(x)/log(x)+tanh(x)^0.5+abs(x)+sqrt(x)
