@@ -25,4 +25,23 @@ void gen_expr(uint64_t *rng, char *buf, size_t cap, int max_depth, int nvars);
 void gen_expr_ex(uint64_t *rng, char *buf, size_t cap, int max_depth, int nvars,
 		 int smooth);
 
+/*
+ * Full options. nvars 1..8 (names x y z a b c d f). wide: 0 = normal mix of
+ * operators and calls; 1 = no calls at all (only + - * /, neg, sqrt, abs,
+ * relu, min, max: the register allocator never has to save anything across a
+ * call); 2 = as 1 but with a call (sin.., pow) about one node in six. wide
+ * modes also make leaves rarer, so trees are bushy. reuse != 0 records some
+ * finished subtrees and pastes the same text again later, so hash-consing
+ * (CSE) keeps those values live over long ranges. Returns 0, or -1 when the
+ * text did not fit in cap (buf is then truncated and must not be used).
+ */
+struct gen_opts {
+	int max_depth;
+	int nvars;
+	int smooth;
+	int wide;
+	int reuse;
+};
+int gen_expr_opts(uint64_t *rng, char *buf, size_t cap, const struct gen_opts *o);
+
 #endif /* FUZZ_GEN_H */

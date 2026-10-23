@@ -3,6 +3,7 @@
 # build/jit with those args and compares stdout and exit status, and stderr
 # too when tests/golden/NAME.err exists.
 cd "$(dirname "$0")/.." || exit 1
+JIT=${JIT:-build/jit}
 
 fail=0
 count=0
@@ -12,7 +13,7 @@ for argsfile in tests/golden/*.args; do
 	expected_code=$(cat "tests/golden/$name.code")
 	actual_out=$(mktemp)
 	actual_err=$(mktemp)
-	build/jit "${args[@]}" > "$actual_out" 2> "$actual_err" < /dev/null
+	"$JIT" "${args[@]}" > "$actual_out" 2> "$actual_err" < /dev/null
 	actual_code=$?
 	count=$((count + 1))
 	err_ok=1

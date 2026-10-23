@@ -51,10 +51,16 @@ static const char *const SMOOTH_CONSTS[] = {
 };
 #define NSMOOTH_CONSTS (sizeof (SMOOTH_CONSTS) / sizeof (SMOOTH_CONSTS[0]))
 
+#define POOL_N 16
+#define POOL_LEN 1024
+
 struct out {
 	char *buf;
 	size_t cap, len;
 	int smooth;
+	int wide;                          /* see struct gen_opts */
+	int reuse, npool, overflow;
+	char pool[POOL_N][POOL_LEN];       /* finished subtrees offered for reuse */
 };
 
 static void
@@ -66,6 +72,9 @@ put(struct out *o, const char *s)
 		memcpy(o->buf + o->len, s, n + 1);
 		o->len += n;
 	}
+	else {
+		o->overflow = 1;
+	}
 }
 
 static void leaf(uint64_t *rng, struct out *o, int nvars);
@@ -74,9 +83,12 @@ static void node(uint64_t *rng, struct out *o, int depth, int nvars);
 static void
 leaf(uint64_t *rng, struct out *o, int nvars)
 {
-	static const char *const VARS[] = { "x", "y", "z" };
+	static const char *const VARS[] = { "x", "y", "z", "a", "b", "c", "d", "f" };
 
-	if (gen_below(rng, 3)) {
+	if (o->reuse && o->npool && gen_below(rng, 3) == 0) {
+		put(o, o->pool[gen_below(rng, (uint64_t)o->npool)]);
+	}
+	else if (gen_below(rng, 3)) {
 		put(o, VARS[gen_below(rng, (uint64_t)nvars)]);
 	}
 	else {
@@ -102,9 +114,12 @@ static void
 node(uint64_t *rng, struct out *o, int depth, int nvars)
 {
 	static const char *const OPS[] = { "+", "-", "*", "/", "^" };
+	static const char *const CHEAP1[] = { "sqrt", "abs", "relu" };
+	static const char *const MINMAX[] = { "min", "max" };
 	uint64_t k;
+	size_t start = o->len;
 
-	if (depth <= 0 || gen_below(rng, 6) == 0) {
+	if (depth <= 0 || gen_below(rng, o->wide ? 20 : 6) == 0) {
 		leaf(rng, o, nvars);
 		return;
 	}
@@ -113,7 +128,7 @@ node(uint64_t *rng, struct out *o, int depth, int nvars)
 		put(o, "(");
 		node(rng, o, depth - 1, nvars);
 		put(o, " ");
-		put(o, OPS[gen_below(rng, 5)]);
+		put(o, OPS[gen_below(rng, o->wide ? 4 : 5)]);
 		put(o, " ");
 		rhs(rng, o, depth - 1, nvars);
 		put(o, ")");
@@ -131,14 +146,29 @@ node(uint64_t *rng, struct out *o, int depth, int nvars)
 		put(o, ")");
 	}
 	else if (k < 8) {                  /* one-argument function */
-		put(o, o->smooth ? SMOOTH1[gen_below(rng, NSMOOTH1)]
-				 : FN1[gen_below(rng, NFN1)]);
+		if (o->wide) {
+			put(o, (2 == o->wide && gen_below(rng, 6) == 0)
+			       ? FN1[gen_below(rng, NFN1)]
+			       : CHEAP1[gen_below(rng, 3)]);
+		}
+		else {
+			put(o, o->smooth ? SMOOTH1[gen_below(rng, NSMOOTH1)]
+					 : FN1[gen_below(rng, NFN1)]);
+		}
 		put(o, "(");
 		node(rng, o, depth - 1, nvars);
 		put(o, ")");
 	}
 	else {                             /* two-argument function */
-		const char *f = FN2[o->smooth ? 2 : gen_below(rng, 3)];
+		const char *f;
+
+		if (o->wide) {
+			f = (2 == o->wide && gen_below(rng, 6) == 0)
+			    ? FN2[2] : MINMAX[gen_below(rng, 2)];
+		}
+		else {
+			f = FN2[o->smooth ? 2 : gen_below(rng, 3)];
+		}
 
 		put(o, f);
 		put(o, "(");
@@ -147,6 +177,41 @@ node(uint64_t *rng, struct out *o, int depth, int nvars)
 		rhs(rng, o, depth - 1, nvars);
 		put(o, ")");
 	}
+	if (o->reuse && !o->overflow && o->len - start < POOL_LEN) {
+		/* offer this subtree for reuse (keep or replace a slot) */
+		int slot = -1;
+
+		if (o->npool < POOL_N && gen_below(rng, 2)) {
+			slot = o->npool++;
+		}
+		else if (o->npool && gen_below(rng, 4) == 0) {
+			slot = (int)gen_below(rng, (uint64_t)o->npool);
+		}
+		if (0 <= slot) {
+			memcpy(o->pool[slot], o->buf + start, o->len - start);
+			o->pool[slot][o->len - start] = 0;
+		}
+	}
+}
+
+int
+gen_expr_opts(uint64_t *rng, char *buf, size_t cap, const struct gen_opts *op)
+{
+	static struct out o;               /* large: not on the stack */
+
+	o.buf = buf;
+	o.cap = cap;
+	o.len = 0;
+	o.smooth = op->smooth;
+	o.wide = op->wide;
+	o.reuse = op->reuse;
+	o.npool = 0;
+	o.overflow = 0;
+	if (cap) {
+		buf[0] = 0;
+	}
+	node(rng, &o, op->max_depth, op->nvars < 1 ? 1 : op->nvars > 8 ? 8 : op->nvars);
+	return o.overflow ? -1 : 0;
 }
 
 void
@@ -165,6 +230,7 @@ gen_expr_ex(uint64_t *rng, char *buf, size_t cap, int max_depth, int nvars,
 	o.cap = cap;
 	o.len = 0;
 	o.smooth = smooth;
+	o.wide = o.reuse = o.npool = o.overflow = 0;
 	if (cap) {
 		buf[0] = 0;
 	}

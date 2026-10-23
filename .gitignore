@@ -11,3 +11,4 @@ node_modules/
 *.tmp
 .vscode/
 .DS_Store
+build-asan/
