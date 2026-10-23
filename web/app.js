@@ -2,6 +2,7 @@
 //   ?expr=<formula>  fill the input with this formula (URL-encoded)
 //   ?drop=1          press "Drop the ball" once, after the first graph is drawn
 //   ?x0=<number>     start the ball at this x (clamped to -4..4) instead of a random x
+//   ?race=1          run the race once: after the ball settles when drop=1, else right after the first compile
 //
 // Live demo page: compile a formula to WebAssembly in the browser, show the
 // engine's stages, graph f and f', roll a gradient-descent ball, race the
@@ -36,6 +37,7 @@ let ballTimer = 0;
 let sliderVals = {};       // by variable name
 let dropOnLoad = false;
 let startX = null;         // from ?x0=
+let raceOnLoad = false;    // from ?race=1; cleared once the race has run
 
 // ---------- engine ----------
 async function boot() {
@@ -338,6 +340,7 @@ function stepBall() {
 function finish(why) {
   stopBall();
   ball.done = true; ball.why = why;
+  if (raceOnLoad) { raceOnLoad = false; runRace(); }
   report();
   draw();
 }
@@ -438,11 +441,13 @@ renderStage();
 const params = new URLSearchParams(location.search);
 if (params.has('expr')) exprEl.value = params.get('expr');
 dropOnLoad = params.get('drop') === '1';
+raceOnLoad = params.get('race') === '1';
 if (params.has('x0') && Number.isFinite(parseFloat(params.get('x0')))) startX = parseFloat(params.get('x0'));
 
 boot().then(() => {
   const ok = compile(exprEl.value);
   if (ok && dropOnLoad) requestAnimationFrame(() => dropTheBall());
+  else if (ok && raceOnLoad) { raceOnLoad = false; runRace(); }
 }).catch((e) => {
   errEl.hidden = false;
   errEl.textContent = 'The engine could not load (engine.mjs / engine.wasm missing?): ' + (e.message || e);
