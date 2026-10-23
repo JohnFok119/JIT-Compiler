@@ -2,6 +2,7 @@
 //   ?expr=<formula>  fill the input with this formula (URL-encoded); default 0.5*x^2 + sin(2*x)
 //   ?drop=1          press "Find the lowest point" once, after the first graph is drawn
 //   ?x0=<number>     start the descent at this x (clamped to -4..4) instead of a random x
+//   ?speed=<1..30>   descent speed in steps per second (default 3; clamped; the slider sets it too)
 //   ?race=1          open "Under the hood" and run the speed test once: after the descent
 //                    settles when drop=1, else right after the first compile
 //   ?open=1          open "Under the hood" (so does the #under-the-hood fragment)
@@ -17,6 +18,7 @@ const $ = (id) => document.getElementById(id);
 const exprEl = $('expr'), errBox = $('err'), errMsg = $('errMsg'), errCaret = $('errCaret');
 const codeEl = $('code'), capEl = $('caption'), tabsEl = $('tabs'), canvas = $('plot');
 const dropBtn = $('dropBtn'), dropInfo = $('dropInfo'), raceBtn = $('raceBtn'), raceOut = $('raceOut');
+const term = $('term');
 const atEl = $('at'), hood = $('under-the-hood');
 
 const XMIN = -4, XMAX = 4;
@@ -36,6 +38,10 @@ let tab = 'steps';
 let stageCache = {};
 let ball = null;           // running gradient descent
 let ballTimer = 0;
+let stepsPerSecond = 3;    // descent speed, set by the Speed slider
+let slideFrame = 0;        // requestAnimationFrame id of the ball slide
+let curRow = null;         // the newest step row in the log
+const speedEl = $('speed'), speedOut = $('speedOut');
 let sliderVals = {};       // by variable name
 let atX = 1;               // the "At x =" value
 let dropOnLoad = false;
@@ -124,9 +130,34 @@ function compile(src) {
   renderResults();
   raceOut.textContent = '';
   dropInfo.textContent = '';
+  termIdle();
   ball = null;
   draw();
   return true;
+}
+
+// ---------- descent log ----------
+const TERM_MAX_ROWS = 250;
+function termLine(text, cls) {
+  // returns the new row element
+  const span = document.createElement('span');
+  if (cls) span.className = cls;
+  span.appendChild(document.createTextNode(text + '\n'));
+  const stick = term.scrollTop + term.clientHeight >= term.scrollHeight - 4;
+  term.appendChild(span);
+  while (term.childNodes.length > TERM_MAX_ROWS) term.removeChild(term.firstChild);
+  if (stick) term.scrollTop = term.scrollHeight;
+  return span;
+}
+function termIdle() {
+  term.textContent = '';
+  curRow = null;
+  termLine('Press "Find the lowest point" to log every step here.', 'm');
+}
+function termRow() {
+  if (curRow) curRow.classList.remove('cur');
+  curRow = termLine(String(ball.step).padStart(4) + fmt(ball.x, 4).padStart(9) + fmt(F(ball.x), 4).padStart(10) +
+    fmt(D(ball.x), 4).padStart(10) + fmt(ball.lr, 4).padStart(8), 'cur');
 }
 
 // ---------- evaluation ----------
@@ -240,7 +271,7 @@ function buildSliders() {
       sliderVals[nm] = cur.vals[i];
       out.textContent = fmt(cur.vals[i], 2);
       sampled = null;
-      stopBall(); ball = null; dropInfo.textContent = '';
+      stopBall(); ball = null; dropInfo.textContent = ''; termIdle();
       renderValues();
       draw();
     });
@@ -292,6 +323,7 @@ function draw() {
   const w = canvas.clientWidth || 300;
   const h = Math.round(w * 0.75);
   canvas.style.height = h + 'px';
+  term.style.height = window.matchMedia('(min-width: 1200px)').matches ? h + 'px' : '';
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
   const c = canvas.getContext('2d');
@@ -353,12 +385,16 @@ function draw() {
     };
     c.strokeStyle = red; c.lineWidth = 1; c.setLineDash([2, 4]);
     c.beginPath();
-    ball.trail.forEach((x, i) => { const [px, py] = pt(x); if (i) c.lineTo(px, py); else c.moveTo(px, py); });
+    const bxv = ball.dx !== undefined ? ball.dx : ball.x;   // displayed x (mid-slide it lags ball.x)
+    ball.trail.slice(0, -1).concat([bxv]).forEach((x, i) => { const [px, py] = pt(x); if (i) c.lineTo(px, py); else c.moveTo(px, py); });
     c.stroke(); c.setLineDash([]);
     c.fillStyle = red;
     ball.trail.slice(0, -1).forEach((x) => { const [px, py] = pt(x); c.beginPath(); c.arc(px, py, 2, 0, 6.2832); c.fill(); });
-    const [bx, by] = pt(ball.x);
+    const [bx, by] = pt(bxv);
     c.beginPath(); c.arc(bx, by, 6, 0, 6.2832); c.fill();
+    c.font = '14px ' + mono; c.fillStyle = red; c.textBaseline = 'bottom';
+    c.textAlign = bx > w - padR - 32 ? 'right' : 'left';
+    c.fillText(String(ball.step), bx + (c.textAlign === 'left' ? 8 : -8), by - 8);
   }
   const others = cur.n > 1 ? ' with ' + cur.names.slice(1).map((nm, k) => nm + ' = ' + cur.vals[k + 1].toFixed(2)).join(', ') : '';
   canvas.setAttribute('aria-label',
@@ -367,7 +403,9 @@ function draw() {
 
 // ---------- gradient descent ----------
 function stopBall() {
-  if (ballTimer) { clearInterval(ballTimer); ballTimer = 0; }
+  if (ballTimer) { clearTimeout(ballTimer); ballTimer = 0; }
+  if (slideFrame) { cancelAnimationFrame(slideFrame); slideFrame = 0; }
+  if (ball) delete ball.dx;
   dropBtn.disabled = false;
 }
 
@@ -376,8 +414,13 @@ function findLowest() {
   stopBall();
   ball = { x: startX !== null ? Math.min(XMAX, Math.max(XMIN, startX)) : XMIN + 0.5 + Math.random() * (XMAX - XMIN - 1), lr: 0.1, step: 0, trail: [], done: false };
   ball.trail.push(ball.x);
+  term.textContent = '';
+  curRow = null;
+  termLine('$ descend ' + cur.src + ' from ' + xName() + ' = ' + fmt(ball.x, 3), 'm');
+  termLine('step'.padStart(4) + 'x'.padStart(9) + 'f(x)'.padStart(10) + 'slope'.padStart(10) + 'size'.padStart(8), 'm nw');
+  termRow();
   dropBtn.disabled = true;
-  ballTimer = setInterval(stepBall, 1000 / 30);
+  ballTimer = setTimeout(stepBall, 1000 / stepsPerSecond);
   report();
   draw();
 }
@@ -393,6 +436,7 @@ function report() {
 }
 
 function stepBall() {
+  ballTimer = 0;
   const g = D(ball.x);
   const f0 = F(ball.x);
   if (!Number.isFinite(g) || !Number.isFinite(f0)) return finish('the slope is not a number here');
@@ -409,16 +453,48 @@ function stepBall() {
     ball.lr /= 2;
   }
   if (!improved) return finish('it reached the edge of the graph or a value that is not a number');
+  const from = ball.trail[ball.trail.length - 1];   // previous accepted x
   ball.step++;
   ball.trail.push(ball.x);
+  termRow();
   if (ball.step >= 200) return finish('it hit the limit of 200 steps');
   report();
+  slideBall(from, ball.x);
+  ballTimer = setTimeout(stepBall, 1000 / stepsPerSecond);
+}
+
+// Slide the drawn ball from x0 to x1 along the curve, in step with the log row.
+function slideBall(x0, x1) {
+  if (slideFrame) { cancelAnimationFrame(slideFrame); slideFrame = 0; }
+  const dur = Math.min(300, 0.6 * 1000 / stepsPerSecond);
+  if (stepsPerSecond > 10 || !(dur > 0)) { delete ball.dx; draw(); return; }
+  const b = ball;
+  let t0 = null;
+  b.dx = x0;
+  const frame = () => {
+    const now = performance.now();
+    slideFrame = 0;
+    if (ball !== b || b.done) return;
+    if (t0 === null) t0 = now;   // time the slide from its first frame
+    const t = Math.min(1, Math.max(0, (now - t0) / dur));
+    const e = 1 - (1 - t) * (1 - t);
+    if (t >= 1) delete b.dx; else b.dx = x0 + (x1 - x0) * e;
+    draw();
+    if (t < 1) slideFrame = requestAnimationFrame(frame);
+  };
   draw();
+  slideFrame = requestAnimationFrame(frame);
 }
 
 function finish(why, settled) {
   stopBall();
+  delete ball.dx;
   ball.done = true; ball.why = why; ball.settled = !!settled;
+  const n = ball.step + (ball.step === 1 ? ' step' : ' steps');
+  termLine('');
+  termLine(settled
+    ? 'done: lowest point near ' + xName() + ' = ' + fmt(ball.x, 3) + ', f = ' + fmt(F(ball.x), 3) + ', after ' + n
+    : 'stopped: ' + why + ', after ' + n, 'a');
   if (raceOnLoad) { raceOnLoad = false; runRace(); }
   report();
   draw();
@@ -509,6 +585,12 @@ atEl.addEventListener('input', () => {
   const v = parseFloat(atEl.value);
   if (Number.isFinite(v)) { atX = v; renderValues(); }
 });
+function setSpeed(v) {
+  stepsPerSecond = v;
+  speedEl.value = String(v);
+  speedOut.textContent = v + (v === 1 ? ' step per second' : ' steps per second');
+}
+speedEl.addEventListener('input', () => setSpeed(parseInt(speedEl.value, 10)));
 dropBtn.addEventListener('click', findLowest);
 raceBtn.addEventListener('click', runRace);
 let resizeTimer = 0;
@@ -516,10 +598,12 @@ window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer
 
 buildTabs();
 renderStage();
+termIdle();
 const params = new URLSearchParams(location.search);
 if (params.has('expr')) exprEl.value = params.get('expr');
 dropOnLoad = params.get('drop') === '1';
 raceOnLoad = params.get('race') === '1';
+if (params.has('speed') && Number.isFinite(parseFloat(params.get('speed')))) setSpeed(Math.min(30, Math.max(1, Math.round(parseFloat(params.get('speed'))))));
 if (params.has('x0') && Number.isFinite(parseFloat(params.get('x0')))) startX = parseFloat(params.get('x0'));
 if (params.get('open') === '1' || params.get('race') === '1' || location.hash === '#under-the-hood') hood.open = true;
 

@@ -64,10 +64,16 @@
         <span class="key"><span class="sw dashed"></span>slope f′(x)</span>
       </p>
       <canvas id="plot" role="img" aria-label="Graph"></canvas>
+      <div class="speed"><label for="speed" class="small quiet">Speed</label><input id="speed" type="range" min="1" max="30" step="1" value="3"><output id="speedOut" for="speed" class="small">3 steps per second</output></div>
       <div class="drop">
         <button id="dropBtn" class="btn" type="button">Find the lowest point</button>
         <p id="dropInfo" class="dropinfo" aria-live="polite"></p>
       </div>
+    </section>
+
+    <section class="termcol" aria-label="Descent log">
+      <p class="small quiet">Descent log</p>
+      <pre id="term" class="term" role="log" aria-live="off" tabindex="0"></pre>
     </section>
   </div>
 
