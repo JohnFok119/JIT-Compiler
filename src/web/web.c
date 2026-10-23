@@ -22,6 +22,7 @@ struct handle {
 	jit_expr *opt;          /* optimized at the load level */
 	jit_expr *disp;         /* display form, for the infix stage */
 	jit_expr *diff;         /* d/d(first variable), optimized at the load level */
+	jit_expr *diff_disp;    /* the same derivative in display form, for the diff stage */
 	double vars[JIT_MAX_VARS];
 	unsigned char *wasm[2]; /* lazily emitted: 0 = f, 1 = f' */
 	size_t wasm_len[2];
@@ -63,6 +64,7 @@ release(struct handle *h)
 	jit_free(h->opt);
 	jit_free(h->disp);
 	jit_free(h->diff);
+	jit_free(h->diff_disp);
 	free(h->wasm[0]);
 	free(h->wasm[1]);
 	memset(h, 0, sizeof (*h));
@@ -106,7 +108,8 @@ jitw_load(const char *src, int opt_level)
 		return 0;
 	}
 	var = jit_nvars(h->raw) ? jit_var_name(h->raw, 0) : "";
-	if (!(h->diff = jit_diff(h->raw, var, &err))) {
+	if (!(h->diff = jit_diff(h->raw, var, &err)) ||
+	    !(h->diff_disp = jit_diff(h->raw, var, &err))) {
 		set_error(err.pos, err.msg);
 		release(h);
 		return 0;
@@ -153,7 +156,7 @@ stage_text(const struct handle *h, const char *stage)
 		rc = jit_dump(h->disp, "infix", f);
 	}
 	else if (!strcmp(stage, "diff")) {
-		rc = jit_dump(h->diff, "infix", f);
+		rc = jit_dump(h->diff_disp, "infix", f);
 	}
 	else if (!strcmp(stage, "diff_ir")) {
 		rc = jit_dump(h->diff, "ir", f);
