@@ -14,8 +14,25 @@ fail=0
 count=0
 
 # tty INPUT COMMAND: run COMMAND on a pseudo-terminal, typing INPUT into it.
+# script also logs the session to a file. The typing waits (up to 10 s) until
+# the program has shown its first "jit> " prompt, or, when there is no input,
+# until it has printed anything.
 tty() {
-	{ sleep 1; printf '%b' "$1"; } | timeout 60 script -qc "stty -echo; $2" /dev/null | tr -d '\r'
+	local log
+	log=$(mktemp)
+	{
+		local i
+		for i in $(seq 100); do
+			if [ -n "$1" ]; then
+				grep -q 'jit> ' "$log" && break
+			else
+				grep -qv '^Script started' "$log" && break
+			fi
+			sleep 0.1
+		done
+		printf '%b' "$1"
+	} | timeout 60 script -qfc "stty -echo; $2" "$log" | tr -d '\r'
+	rm -f "$log"
 }
 
 # expect NAME ACTUAL EXPECTED
@@ -51,6 +68,11 @@ jit> jit> 8
 jit> error: expected ')'
   (1
     ^
+jit> "
+
+# a word without '=' among the name=value tokens is an error, not a crash
+out=$(tty 'x+y x=1 y\n:q\n' 'NO_COLOR=1 build/jit --backend interp 2>&1')
+expect bad-binding "$out" "jit> error: 'y' is not name=value
 jit> "
 
 # EOF ends the session cleanly

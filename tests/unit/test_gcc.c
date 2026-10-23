@@ -382,6 +382,52 @@ check_compile_error(void)
 	CHECK(before == after);
 }
 
+static int
+count_tmp_dirs(void)
+{
+	DIR *d = opendir("/tmp");
+	struct dirent *de;
+	int n = 0;
+
+	while (d && (de = readdir(d))) {
+		n += !strncmp(de->d_name, "jit-", 4);
+	}
+	if (d) {
+		closedir(d);
+	}
+	return n;
+}
+
+/* gcc itself fails (JIT_GCC points at a program that exits 1, or that does
+   not exist): the call fails cleanly and removes its temp directory. */
+static void
+check_gcc_fails(void)
+{
+	static const char *COMPILERS[] = { "/bin/false", "/nonexistent/gcc" };
+	static const char *WANT[] = { "gcc failed (exit 1)", "execvp() failed" };
+	struct jit_error err;
+	jit_expr *e = jit_parse("x + 1", 0, &err);
+	unsigned i;
+
+	CHECK(e != NULL);
+	if (!e) {
+		return;
+	}
+	for (i = 0; i < 2; ++i) {
+		struct gcc_code g;
+		int before = count_tmp_dirs();
+
+		CHECK(0 == setenv("JIT_GCC", COMPILERS[i], 1));
+		CHECK(-1 == gcc_compile(&e->ir, &g, &err));
+		CHECK_STR(err.msg, WANT[i]);
+		CHECK(-1 == err.pos);
+		CHECK(NULL == g.so);
+		CHECK(count_tmp_dirs() == before);
+	}
+	unsetenv("JIT_GCC");
+	jit_free(e);
+}
+
 /* The temp dir exists while the function lives and is gone after free; the
    function survives jit_free(expr). */
 static void
@@ -412,6 +458,48 @@ check_lifetime(void)
 	jit_fn_free(NULL);
 }
 
+/* gcc must call glibc, not rewrite pow(x,2) to x*x or fold libm calls on
+ * constants itself (-fno-builtin). */
+static void
+check_builtins(void)
+{
+	static const char *CONSTS[] = {
+		"exp(0.1)", "log(3)", "tanh(0.7)", "pow(1.1, 2)", "sin(0.3)",
+		"cos(1)", "tan(0.5)", "pow(2.5, 1.5)", "pow(1.0175903746940147, 2)",
+		"x + exp(0.1) * log(3) - tanh(0.7)",
+	};
+	struct jit_error err;
+	unsigned i;
+	int level;
+	jit_expr *e;
+	jit_fn *fn;
+	double x = 1.0175903746940147, want, got;
+
+	/* the value that exposed it: glibc pow(x,2) differs from x*x */
+	for (level = 0; level <= 2; level += 2) {
+		e = jit_parse("x^2", 0, &err);
+		CHECK(e != NULL && 0 == jit_optimize(e, level));
+		fn = e ? jit_compile(e, JIT_GCC, &err) : NULL;
+		CHECK(fn != NULL);
+		if (fn) {
+			want = jit_interp(e, &x);
+			got = jit_call(fn, &x);
+			if (!same(want, got)) {
+				printf("  x^2 at -O%d: interp %.17g, gcc %.17g\n",
+				       level, want, got);
+			}
+			CHECK(same(want, got));
+			jit_fn_free(fn);
+		}
+		jit_free(e);
+	}
+	for (level = 0; level <= 2; level += 2) {
+		for (i = 0; i < sizeof (CONSTS) / sizeof (CONSTS[0]); ++i) {
+			check_src(CONSTS[i], 0, level);
+		}
+	}
+}
+
 int
 main(void)
 {
@@ -424,9 +512,11 @@ main(void)
 		check_src(LEGACY[i], 1, 0);
 	}
 	check_goldens();
+	check_builtins();
 	check_cgen();
 	check_loader_error();
 	check_compile_error();
+	check_gcc_fails();
 	check_lifetime();
 	return CHECK_REPORT("test_gcc.c");
 }

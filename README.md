@@ -6,6 +6,8 @@ A just-in-time compiler for math expressions, written in C11: it turns a formula
 
 Try it in your browser: <https://wood-o7.vercel.app/projects/jit-v2/demo/>
 
+![The browser demo page: a formula box, the generated x86-64 code, a graph with a ball rolling down the curve, and a race between the compiled and step-by-step versions](docs/media/demo-desktop.png)
+
 ![Terminal session: evaluating, printing machine code, differentiating, benchmarking and a parse error](docs/media/demo.gif)
 
 ## What it does
@@ -29,7 +31,7 @@ Try it in your browser: <https://wood-o7.vercel.app/projects/jit-v2/demo/>
 **Backends** (`src/backend/`).
 - *Interpreter* (`src/ir/interp.c`): walks the IR. It defines the meaning of every operation and is the reference the other backends are checked against.
 - *x86-64* (`src/backend/x86_64/`): a hand-written instruction encoder, linear-scan register allocation over `xmm0` to `xmm15`, and constants in a RIP-relative pool. The bytes are written to an `mmap`ed page that is writable, then switched with `mprotect` to executable, never both at once (W^X).
-- *GCC* (`src/backend/gcc/`): the original approach, fixed and kept. It writes C source to a private temporary directory, runs `gcc -shared` through `fork`, `execv` and `waitpid`, then loads the result with `dlopen` and `dlsym`.
+- *GCC* (`src/backend/gcc/`): the original approach, fixed and kept. It writes C source to a private temporary directory, runs `gcc -shared` through `fork`, `execvp` and `waitpid`, then loads the result with `dlopen` and `dlsym`.
 - *WebAssembly* (`src/backend/wasm/`, `src/web/`): emits a WebAssembly module for the expression. The whole engine also builds with Emscripten, which is what the browser demo runs.
 
 **Derivatives** (`src/ir/diff.c`). Symbolic differentiation on the IR with per-operation rules and the chain rule. The result goes back through the same builder and optimizer. Points where a function has a kink print as `step(...)`.
@@ -47,7 +49,7 @@ Try it in your browser: <https://wood-o7.vercel.app/projects/jit-v2/demo/>
 
 ![Compile time and time per evaluation for each backend, log scale](docs/bench/chart.svg)
 
-The x86-64 backend compiles in 14 to 651 microseconds, while the GCC backend takes 0.26 to 0.47 seconds because it starts a `gcc` process. On plain arithmetic the interpreter is about 14 to 21 times slower per evaluation than compiled code, and on expressions dominated by libm the gap shrinks to 1.2 to 1.8 times. These numbers come from a shared laptop under WSL2 and individual rows vary by tens of percent; [docs/benchmarks.md](docs/benchmarks.md) has the method, the machine and the noise measurements.
+The x86-64 backend compiles in 14 to 651 microseconds, while the GCC backend takes 0.26 to 0.47 seconds because it starts a `gcc` process. On plain arithmetic the interpreter is about 14 to 21 times slower per evaluation than compiled code, and on expressions dominated by libm the gap shrinks to 1.1 to 1.7 times. These numbers come from a shared laptop under WSL2 and individual rows vary by tens of percent; [docs/benchmarks.md](docs/benchmarks.md) has the method, the machine and the noise measurements.
 
 ## Build and run
 

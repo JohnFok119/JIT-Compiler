@@ -20,8 +20,14 @@ struct jitc;
 /**
  * Compiles the C program dir/expr.c into the dynamically loadable module
  * dir/expr.so by running
- *   /usr/bin/gcc -shared -fPIC -O2 -ffp-contract=off -o expr.so expr.c -lm
- * in a child process (working directory dir).
+ *   gcc -shared -fPIC -O2 -ffp-contract=off -fno-builtin -o expr.so expr.c -lm
+ * in a child process (working directory dir). -fno-builtin keeps gcc from
+ * rewriting pow(x, 2) to x*x or folding libm calls itself, so every libm
+ * call reaches glibc exactly as the interpreter's does.
+ *
+ * The compiler is "gcc" (found on PATH) unless the environment variable
+ * JIT_GCC names another program or path. That exists so tests can point the
+ * loader at /bin/false; do not set it in normal use.
  *
  * dir   : a directory that holds expr.c
  * errmsg: receives gcc's first line of stderr when compilation fails

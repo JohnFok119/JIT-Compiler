@@ -7,6 +7,7 @@
  * loader.c
  */
 
+#include <errno.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -46,11 +47,15 @@ int jitc_compile(const char *dir, char *errmsg, size_t errlen) {
     int fds[2];
     pid_t pid;
     int status;
+    const char *compiler = getenv("JIT_GCC");
     char buf[1024], drain[256];
     size_t used = 0;
     ssize_t got;
 
     errmsg[0] = '\0';
+    if (!compiler || !compiler[0]) {
+        compiler = "gcc";
+    }
 
     /* A pipe carries gcc's stderr back to us: the child's end is dup2()ed
        onto file descriptor 2 before gcc starts. */
@@ -70,8 +75,8 @@ int jitc_compile(const char *dir, char *errmsg, size_t errlen) {
     else if (pid == 0) {
         /* --- Child Process --- */
         const char *args[] = {"gcc", "-shared", "-fPIC", "-O2",
-                              "-ffp-contract=off", "-o", "expr.so",
-                              "expr.c", "-lm", NULL};
+                              "-ffp-contract=off", "-fno-builtin",
+                              "-o", "expr.so", "expr.c", "-lm", NULL};
 
         close(fds[0]);
         dup2(fds[1], 2);
@@ -84,16 +89,16 @@ int jitc_compile(const char *dir, char *errmsg, size_t errlen) {
             _exit(127);
         }
 
-        /* execv() replaces the child process with gcc.
-           The second argument is cast to '(char * const *)' to match
-           the parameter of execv. */
+        /* execvp() replaces the child process with gcc (looked up on PATH,
+           or the path in $JIT_GCC). The second argument is cast to
+           '(char * const *)' to match the parameter of execvp. */
 
-        execv("/usr/bin/gcc", (char * const *)args);
+        execvp(compiler, (char * const *)args);
 
         /* If execv returns, it means an error occurred.
            We must exit the child process to prevent it from continuing. */
 
-        fprintf(stderr, "execv() failed\n");
+        fprintf(stderr, "execvp() failed\n");
         _exit(127);
     }
     else {
@@ -117,7 +122,12 @@ int jitc_compile(const char *dir, char *errmsg, size_t errlen) {
 
         /* Wait for child process by calling waitpid() */
 
-        waitpid(pid, &status, 0);
+        while (0 > waitpid(pid, &status, 0)) {
+            if (EINTR != errno) {
+                snprintf(errmsg, errlen, "waitpid() failed");
+                return -1;
+            }
+        }
 
         /* Check if the child terminated normally. If so, check its exit code.
            A non-zero exit code from gcc indicates a compilation error. */

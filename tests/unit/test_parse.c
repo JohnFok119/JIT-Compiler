@@ -193,6 +193,92 @@ test_dump_stages(void)
 	free(t);
 }
 
+/* Nesting cap (256): groups, calls, unary chains and ^ chains. */
+static char *
+nested(const char *open, const char *close, const char *core, int n)
+{
+	size_t lo = strlen(open), lc = strlen(close), lk = strlen(core);
+	char *s = malloc((size_t)n * (lo + lc) + lk + 1), *p = s;
+	int i;
+
+	for (i = 0; i < n; ++i, p += lo) {
+		memcpy(p, open, lo);
+	}
+	memcpy(p, core, lk);
+	p += lk;
+	for (i = 0; i < n; ++i, p += lc) {
+		memcpy(p, close, lc);
+	}
+	*p = '\0';
+	return s;
+}
+
+static void
+test_depth(void)
+{
+	/* per = nesting levels one repetition of open/close costs */
+	static const struct { const char *open, *close, *core; int per; } K[] = {
+		{ "(", ")", "x", 1 }, { "sin(", ")", "x", 1 }, { "-", "", "x", 1 },
+		{ "+", "", "x", 1 }, { "(-sin(", "))", "x", 3 },
+	};
+	struct jit_error err;
+	unsigned i;
+
+	for (i = 0; i < sizeof (K) / sizeof (K[0]); ++i) {
+		char *ok = nested(K[i].open, K[i].close, K[i].core,
+				  256 / K[i].per);
+		char *bad = nested(K[i].open, K[i].close, K[i].core,
+				   300 / K[i].per + 1);
+		jit_expr *e;
+
+		e = jit_parse(ok, 0, &err);
+		CHECK(e != NULL);
+		if (e) {
+			jit_expr *d = jit_diff(e, "x", &err);
+
+			CHECK(0 == jit_optimize(e, 2));
+			CHECK(d != NULL);
+			jit_free(d);
+			jit_free(e);
+		}
+		CHECK(NULL == jit_parse(bad, 0, &err));
+		CHECK_STR(err.msg, "expression nests too deeply");
+		CHECK(err.pos >= 0);
+		free(ok);
+		free(bad);
+	}
+
+	/* exact boundary and error position for plain groups */
+	{
+		char *ok = nested("(", ")", "1", 256), *bad = nested("(", ")", "1", 257);
+		jit_expr *e = jit_parse(ok, 0, &err);
+
+		CHECK(e != NULL);
+		jit_free(e);
+		CHECK(NULL == jit_parse(bad, 0, &err));
+		CHECK_STR(err.msg, "expression nests too deeply");
+		CHECK(256 == err.pos);
+		free(ok);
+		free(bad);
+	}
+
+	/* a ^ chain: 2^2^2^... */
+	{
+		char *s = malloc(2 * 400 + 2), *p = s;
+		int n;
+
+		for (n = 0; n < 300; ++n) {
+			*p++ = '2';
+			*p++ = '^';
+		}
+		*p++ = '2';
+		*p = '\0';
+		CHECK(NULL == jit_parse(s, 0, &err));
+		CHECK_STR(err.msg, "expression nests too deeply");
+		free(s);
+	}
+}
+
 int
 main(void)
 {
@@ -201,5 +287,6 @@ main(void)
 	test_errors();
 	test_accepted();
 	test_dump_stages();
+	test_depth();
 	return CHECK_REPORT("test_parse");
 }

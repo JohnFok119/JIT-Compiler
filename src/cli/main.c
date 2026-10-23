@@ -141,9 +141,15 @@ evaluate_expr(const struct opts *o, const char *src, const char **bind,
 	/* name=value arguments; a repeated name: the last value wins */
 	for (j = 0; j < nbind; ++j) {
 		const char *eq = strchr(bind[j], '=');
-		int len = (int)(eq - bind[j]);
+		int len;
 		char *end;
 		double v;
+
+		if (!eq) {
+			errorf("'%s' is not name=value", bind[j]);
+			goto done;
+		}
+		len = (int)(eq - bind[j]);
 
 		for (k = 0; k < jit_nvars(e); ++k) {
 			const char *name = jit_var_name(e, k);

@@ -6,6 +6,7 @@
 #include "front/parser.h"
 
 #define LEGACY_MSG "legacy mode supports numbers and + - * / only"
+#define MAX_DEPTH 256   /* nested groups, calls, unary minus and ^ chains */
 
 /*
  * Grammar (core.md):
@@ -24,6 +25,7 @@ struct parser {
 	int i;
 	int legacy;
 	int failed;
+	int depth;              /* current nesting, see MAX_DEPTH */
 	struct parse_result *res;
 	struct jit_error *err;
 };
@@ -48,6 +50,19 @@ oom(struct parser *p)
 {
 	fail(p, -1, "out of memory");
 	return NULL;
+}
+
+/* Enters one nesting level (group, call, unary chain, ^ chain); 0 and an
+   error when the cap is exceeded. Every success is paired with --p->depth. */
+static int
+enter(struct parser *p, int pos)
+{
+	if (p->depth >= MAX_DEPTH) {
+		fail(p, pos, "expression nests too deeply");
+		return 0;
+	}
+	++p->depth;
+	return 1;
 }
 
 /* Current token; reaching a TOK_ERROR reports the lexical error. */
@@ -203,7 +218,12 @@ name_primary(struct parser *p)
 	}
 	advance(p);
 	if (TOK_LPAREN == peek(p)->kind) {
-		return call(p, name);
+		if (!enter(p, peek(p)->pos)) {
+			return NULL;
+		}
+		n = call(p, name);
+		--p->depth;
+		return n;
 	}
 	if (p->failed) {
 		return NULL;
@@ -241,8 +261,13 @@ primary(struct parser *p)
 		return name_primary(p);
 	}
 	if (TOK_LPAREN == t->kind) {
+		if (!enter(p, t->pos)) {
+			return NULL;
+		}
 		advance(p);
-		if (!(n = expr(p))) {
+		n = expr(p);
+		--p->depth;
+		if (!n) {
 			return NULL;
 		}
 		if (TOK_RPAREN != peek(p)->kind) {
@@ -277,8 +302,14 @@ power(struct parser *p)
 		ast_free(base);
 		return NULL;
 	}
+	if (!enter(p, pos)) {
+		ast_free(base);
+		return NULL;
+	}
 	advance(p);
-	if (!(exponent = unary(p))) {
+	exponent = unary(p);
+	--p->depth;
+	if (!exponent) {
 		ast_free(base);
 		return NULL;
 	}
@@ -293,12 +324,22 @@ unary(struct parser *p)
 	int pos = t->pos;
 
 	if (is_op(t, '+')) {
+		if (!enter(p, pos)) {
+			return NULL;
+		}
 		advance(p);
-		return unary(p);
+		a = unary(p);
+		--p->depth;
+		return a;
 	}
 	if (is_op(t, '-')) {
+		if (!enter(p, pos)) {
+			return NULL;
+		}
 		advance(p);
-		if (!(a = unary(p))) {
+		a = unary(p);
+		--p->depth;
+		if (!a) {
 			return NULL;
 		}
 		return node(p, AST_NEG, pos, a, NULL);
