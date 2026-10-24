@@ -178,3 +178,7 @@ scripts/             chart generator and static server
 ## Origins
 
 Started as a UC Irvine CS 238P (Operating Systems) assignment: the course skeleton and Makefile are © Tony Givargis, 2023–2025. The original version is at [github.com/giuseppi/JIT-Compiler](https://github.com/giuseppi/JIT-Compiler). The `--legacy` flag reproduces its behaviour.
+
+## License
+
+MIT for the code written for this project; see [LICENSE](LICENSE). Files from the CS 238P course skeleton keep their original terms, and the web fonts are under the SIL Open Font License.
