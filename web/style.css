@@ -50,6 +50,7 @@ p { margin: 0; }
 .top { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 24px; margin-bottom: 24px; }
 .intro { min-width: 0; max-width: 70ch; }
 h1 { margin: 0 0 4px; font-size: 28px; line-height: 1.2; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+h1 .logo { display: inline-block; vertical-align: -5px; margin-right: 12px; }
 .lead { color: var(--muted); }
 .links { display: flex; align-items: center; gap: 16px; }
 a, .linkbtn { color: var(--navy); text-decoration: underline; text-underline-offset: 3px; }
