@@ -4,9 +4,9 @@
 
 A just-in-time compiler for math expressions, written in C11: it turns a formula such as `sin(x)^2 + cos(x)^2` into x86-64 machine code at run time, writes the bytes into memory itself and calls them.
 
-Try it in your browser: <https://wood-o7.vercel.app/projects/jit-v2/demo/>
+Try it in your browser: <https://johnfok119.github.io/JIT-Compiler/> (also on my portfolio: <https://wood-o7.vercel.app/projects/jit-v2/demo/>)
 
-![The browser demo page: a formula box, the generated x86-64 code, a graph with a ball rolling down the curve, and a race between the compiled and step-by-step versions](docs/media/demo-desktop.png)
+![The browser demo page: a formula box with its derivative and value, a graph with a ball rolling down to the lowest point, and a terminal-style log printing each gradient-descent step](docs/media/demo-desktop.png)
 
 ![Terminal session: evaluating, printing machine code, differentiating, benchmarking and a parse error](docs/media/demo.gif)
 
