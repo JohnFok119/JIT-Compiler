@@ -127,7 +127,7 @@ wasm:
 web: web/dist/engine.mjs web/dist/engine.wasm
 	@rm -rf web/site
 	@mkdir -p web/site
-	@cp web/index.html web/app.js web/style.css web/imports.mjs web/site/
+	@cp web/index.html web/app.js web/style.css web/imports.mjs web/logo.svg web/site/
 	@cp -r web/fonts web/site/fonts
 	@cp web/dist/engine.mjs web/dist/engine.wasm web/site/
 	@du -sh web/site
